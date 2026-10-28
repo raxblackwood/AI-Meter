@@ -3,10 +3,9 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
-import { ACCOUNTS, ANTIGRAVITY_IDS } from "../public/accounts.js";
 import { accountView, HOUR, summarize } from "../public/model.js";
 import { createAntigravityCollector, parseCommandLine, toReading } from "../src/antigravity.js";
-import { linkEmail, readAntigravityFeed, recordAntigravity } from "../src/store.js";
+import { accountForIdentity, readAccounts, readReadings, readSeen, recordReading, updateAccount } from "../src/store.js";
 
 const NOW = Date.UTC(2026, 9, 28, 12, 0);
 const iso = (ms) => new Date(ms).toISOString();
@@ -70,7 +69,7 @@ test("a full quota is recorded as no open window", () => {
 });
 
 test("a locked-out account is not suggested until its lockout ends", () => {
-  const ag1 = ACCOUNTS.find((a) => a.id === "ag1");
+  const ag1 = { id: "ag1", provider: "antigravity", name: "Antigravity 1" };
   const locked = { accountId: "ag1", at: NOW, session: null, weekly: { usedPct: 100, resetsAt: NOW + 50 * HOUR }, flash: null, source: "antigravity" };
   const v = accountView(ag1, [locked], NOW, NOW - 24 * HOUR, NOW + 6 * 24 * HOUR);
   assert.equal(v.exhausted, true);
@@ -81,19 +80,29 @@ test("a locked-out account is not suggested until its lockout ends", () => {
   assert.equal(accountView(ag1, [locked], NOW + 51 * HOUR, NOW, NOW + 7 * 24 * HOUR).weekly, null);
 });
 
-test("readings are stored by email, linked to free accounts and deduplicated", () => {
+test("each new Antigravity email becomes its own account, and readings are deduplicated", () => {
   const dir = tempDir();
-  const a = { at: NOW, email: "a@x.com", plan: "Google AI Pro", session: { usedPct: 10, resetsAt: NOW + HOUR }, weekly: null, flash: null };
-  assert.equal(linkEmail("a@x.com", ANTIGRAVITY_IDS, dir), "ag1");
-  assert.equal(linkEmail("b@x.com", ANTIGRAVITY_IDS, dir), "ag2");
-  assert.equal(linkEmail("a@x.com", ANTIGRAVITY_IDS, dir), "ag1");
-  assert.equal(recordAntigravity(a, dir), true);
-  assert.equal(recordAntigravity({ ...a, at: NOW + 60_000 }, dir), false);
-  assert.equal(recordAntigravity({ ...a, at: NOW + 120_000, session: { usedPct: 20, resetsAt: NOW + HOUR } }, dir), true);
-  const feed = readAntigravityFeed(dir);
-  assert.equal(feed.snapshots.length, 2);
-  assert.deepEqual(feed.snapshots.map((s) => s.accountId), ["ag1", "ag1"]);
-  assert.deepEqual(feed.detected, [{ email: "a@x.com", accountId: "ag1", seenAt: NOW + 120_000, plan: "Google AI Pro" }]);
+  const a = accountForIdentity("antigravity", "a@x.com", dir);
+  const b = accountForIdentity("antigravity", "b@x.com", dir);
+  assert.equal(accountForIdentity("antigravity", "a@x.com", dir).id, a.id);
+  assert.deepEqual([a.name, b.name], ["Antigravity 1", "Antigravity 2"]);
+
+  const reading = { at: NOW, session: { usedPct: 10, resetsAt: NOW + HOUR }, weekly: null, flash: null };
+  assert.equal(recordReading(a.id, reading, dir), true);
+  assert.equal(recordReading(a.id, { ...reading, at: NOW + 60_000 }, dir), false);
+  assert.equal(recordReading(a.id, { ...reading, at: NOW + 120_000, session: { usedPct: 20, resetsAt: NOW + HOUR } }, dir), true);
+  assert.deepEqual(readReadings(dir).map((r) => r.session.usedPct), [10, 20]);
+  assert.equal(readSeen(dir)[a.id], NOW + 120_000);
+});
+
+test("a removed Antigravity account stays removed when it is seen again", () => {
+  const dir = tempDir();
+  const a = accountForIdentity("antigravity", "a@x.com", dir);
+  updateAccount(a.id, { removedAt: NOW }, dir);
+  const again = accountForIdentity("antigravity", "a@x.com", dir);
+  assert.equal(again.id, a.id);
+  assert.equal(again.removedAt, NOW);
+  assert.equal(readAccounts(dir).length, 1);
 });
 
 test("the collector reports each account once and rediscovers after a failure", async () => {

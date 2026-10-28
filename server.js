@@ -1,24 +1,28 @@
 #!/usr/bin/env node
-// Local-only HTTP server: serves the dashboard and a small JSON API over the data files.
-import { randomUUID } from "node:crypto";
+// Local-only HTTP server: serves the dashboard and a small JSON API over the data files, and receives
+// Claude readings from the browser extension. The desktop app (app/main.js) runs it; `npm start` runs it
+// without the tray.
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { dirname, extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { ACCOUNT_IDS, ACCOUNTS, ANTIGRAVITY_IDS } from "./public/accounts.js";
-import { DAY } from "./public/model.js";
-import { createAntigravityCollector } from "./src/antigravity.js";
-import {
-  linkEmail, readAntigravityFeed, readEntries, readFeed, readLinks, recordAntigravity, writeEntries, writeLinks,
-} from "./src/store.js";
+import { createHub } from "./src/hub.js";
+import { PROVIDERS, readAccounts, readReadings, readSeen, updateAccount } from "./src/store.js";
 
-const PUBLIC_DIR = join(dirname(fileURLToPath(import.meta.url)), "public");
-const MAX_BODY_BYTES = 16 * 1024;
+const ROOT = dirname(fileURLToPath(import.meta.url));
+const PUBLIC_DIR = join(ROOT, "public");
+const EXTENSION_DIR = join(ROOT, "extension");
+const CONNECTOR_PATH = "/api/connector/claude";
+// Extension reports carry the claude.ai account and usage objects, which are a few kilobytes.
+const MAX_BODY_BYTES = 256 * 1024;
+const MAX_NAME_LENGTH = 40;
+export const DEFAULT_PORT = 4317;
 const MIME = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".svg": "image/svg+xml",
+  ".png": "image/png",
 };
 
 class HttpError extends Error {
@@ -42,89 +46,69 @@ async function readBody(req) {
     chunks.push(chunk);
   }
   try {
-    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
   } catch {
     throw new HttpError(400, "Body must be JSON");
   }
 }
 
-function percent(value, field) {
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 100) {
-    throw new HttpError(400, `${field} must be a number from 0 to 100`);
-  }
-  return value;
-}
-
-/** Validates a manual entry. `id` and `at` are accepted so an undo can restore a deleted entry unchanged. */
-export function parseEntry(body, now) {
-  if (!body || typeof body !== "object") throw new HttpError(400, "Body must be an object");
-  if (!ACCOUNT_IDS.has(body.accountId)) throw new HttpError(400, "Unknown accountId");
-  const at = body.at === undefined ? now : body.at;
-  if (!Number.isFinite(at) || at > now + 60_000 || at < now - 30 * DAY) throw new HttpError(400, "Invalid at");
-  const usedPct = percent(body.usedPct, "usedPct");
-  const resetsAt = body.resetsAt;
-  if (!Number.isFinite(resetsAt) || resetsAt <= at || resetsAt > at + 8 * DAY) {
-    throw new HttpError(400, "resetsAt must be after the entry time and within 8 days");
-  }
-  const id = body.id === undefined ? randomUUID() : String(body.id);
-  return { id, accountId: body.accountId, at, session: { usedPct, resetsAt }, weekly: null, source: "manual" };
-}
-
 /**
- * Links an Antigravity email to an account, or unlinks it with accountId null.
- * If the account already has another email, that email takes this one's old account (a swap).
+ * Only this machine's own pages may use the API. The Host check stops DNS rebinding; the Origin check
+ * stops other websites from sending requests that change data. Browser extensions may only post readings.
  */
-export function relink(links, email, accountId, knownEmails) {
-  if (!knownEmails.includes(email)) throw new HttpError(404, "Unknown email");
-  if (accountId !== null && !ANTIGRAVITY_IDS.includes(accountId)) throw new HttpError(400, "Not an Antigravity account");
-  const next = { ...links };
-  const previous = next[email];
-  const holder = Object.keys(next).find((e) => e !== email && next[e] === accountId);
-  next[email] = accountId;
-  if (holder) next[holder] = previous ?? null;
-  return next;
+export function checkLocal(req, port, pathname) {
+  const allowed = new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
+  if (!allowed.has(req.headers.host)) throw new HttpError(403, "Forbidden host");
+  const origin = req.headers.origin;
+  if (req.method === "GET" || !origin) return;
+  if (allowed.has(origin.replace(/^http:\/\//, ""))) return;
+  if (pathname === CONNECTOR_PATH && /^chrome-extension:\/\/[a-p]{32}$/.test(origin)) return;
+  throw new HttpError(403, "Forbidden origin");
 }
 
-async function handleApi(req, res, url, collector) {
-  const now = Date.now();
+function findAccount(id) {
+  const account = readAccounts().find((a) => a.id === id);
+  if (!account) throw new HttpError(404, "No such account");
+  return account;
+}
+
+async function handleApi(req, res, url, hub) {
   if (req.method === "GET" && url.pathname === "/api/state") {
-    const feed = readFeed();
-    const ag = readAntigravityFeed();
-    const entries = readEntries();
+    const accounts = readAccounts();
     return sendJson(res, 200, {
-      now,
-      accounts: ACCOUNTS,
-      snapshots: [...feed.snapshots, ...ag.snapshots, ...entries],
-      entries: [...entries].sort((a, b) => b.at - a.at),
-      feedSeenAt: feed.seenAt,
-      antigravity: { detected: ag.detected, collector: collector?.status ?? null },
+      now: Date.now(),
+      providers: PROVIDERS,
+      accounts: accounts.filter((a) => !a.removedAt),
+      removed: accounts.filter((a) => a.removedAt),
+      snapshots: readReadings(),
+      seen: readSeen(),
+      status: hub.status,
+      antigravity: hub.antigravity,
+      connector: { ...hub.connector, extensionDir: EXTENSION_DIR },
     });
   }
-  if (req.method === "PUT" && url.pathname === "/api/links") {
+  if (req.method === "POST" && url.pathname === CONNECTOR_PATH) {
+    const account = hub.receiveClaude(await readBody(req));
+    return sendJson(res, 200, { accountId: account?.id ?? null });
+  }
+  const match = url.pathname.match(/^\/api\/accounts\/([\w-]+)(\/restore)?$/);
+  if (!match) throw new HttpError(404, "Not found");
+  const [, id, action] = match;
+  findAccount(id);
+  if (req.method === "POST" && action === "/restore") {
+    return sendJson(res, 200, (updateAccount(id, { removedAt: null })));
+  }
+  if (req.method === "PATCH" && !action) {
     const body = await readBody(req);
-    const email = typeof body?.email === "string" ? body.email.toLowerCase() : "";
-    const accountId = body?.accountId ?? null;
-    const known = readAntigravityFeed().detected.map((d) => d.email);
-    const links = relink(readLinks(), email, accountId, known);
-    writeLinks(links);
-    return sendJson(res, 200, links);
+    const name = typeof body.name === "string" ? body.name.trim() : "";
+    if (!name || name.length > MAX_NAME_LENGTH) throw new HttpError(400, `Name must be 1 to ${MAX_NAME_LENGTH} characters`);
+    return sendJson(res, 200, (updateAccount(id, { name })));
   }
-  if (req.method === "POST" && url.pathname === "/api/entries") {
-    const entry = parseEntry(await readBody(req), now);
-    const entries = readEntries();
-    if (entries.some((e) => e.id === entry.id)) throw new HttpError(409, "Entry already exists");
-    writeEntries([...entries, entry]);
-    return sendJson(res, 201, entry);
+  if (req.method === "DELETE" && !action) {
+    // Soft remove, so Undo can bring it back with its history.
+    return sendJson(res, 200, (updateAccount(id, { removedAt: Date.now() })));
   }
-  const match = url.pathname.match(/^\/api\/entries\/([\w-]+)$/);
-  if (req.method === "DELETE" && match) {
-    const entries = readEntries();
-    const entry = entries.find((e) => e.id === match[1]);
-    if (!entry) throw new HttpError(404, "No such entry");
-    writeEntries(entries.filter((e) => e !== entry));
-    return sendJson(res, 200, entry);
-  }
-  throw new HttpError(404, "Not found");
+  throw new HttpError(405, "Method not allowed");
 }
 
 async function serveStatic(res, url) {
@@ -141,15 +125,16 @@ async function serveStatic(res, url) {
   res.end(body);
 }
 
-export function createApp({ collector = null } = {}) {
+export function createApp({ hub, port }) {
   return createServer(async (req, res) => {
     const url = new URL(req.url, "http://localhost");
     try {
-      if (url.pathname.startsWith("/api/")) await handleApi(req, res, url, collector);
+      checkLocal(req, port, url.pathname);
+      if (url.pathname.startsWith("/api/")) await handleApi(req, res, url, hub);
       else if (req.method === "GET") await serveStatic(res, url);
       else throw new HttpError(405, "Method not allowed");
     } catch (err) {
-      const status = err instanceof HttpError ? err.status : 500;
+      const status = err.status ?? 500;
       if (status === 500) console.error(err);
       sendJson(res, status, { error: status === 500 ? "Internal error" : err.message });
     }
@@ -157,15 +142,10 @@ export function createApp({ collector = null } = {}) {
 }
 
 if (import.meta.main) {
-  const port = Number(process.env.PORT) || 4317;
-  const collector = createAntigravityCollector({
-    onReading(reading) {
-      linkEmail(reading.email, ANTIGRAVITY_IDS);
-      recordAntigravity(reading);
-    },
-  });
-  if (process.env.AI_USAGE_ANTIGRAVITY !== "off") collector.start();
-  createApp({ collector }).listen(port, "127.0.0.1", () => {
+  const port = Number(process.env.PORT) || DEFAULT_PORT;
+  const hub = createHub({ antigravity: process.env.AI_USAGE_ANTIGRAVITY !== "off" });
+  hub.start();
+  createApp({ hub, port }).listen(port, "127.0.0.1", () => {
     console.log(`AI Usage Dashboard on http://localhost:${port}`);
   });
 }

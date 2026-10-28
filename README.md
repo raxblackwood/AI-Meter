@@ -1,79 +1,78 @@
 # AI Usage Dashboard
 
-A local dashboard that shows how much AI coding usage is left on each account, per 5-hour session and per week, and suggests where to work next.
-It tracks one Claude Pro account (Claude Code) and three Google AI Pro accounts (Antigravity).
+A desktop app that shows how much AI coding usage is left on each of your accounts, per 5-hour session and per week, and suggests which account to use next.
+It reads Claude and Antigravity on its own; there is nothing to log by hand.
 
 ## Run
 
-Requires Node 24.2 or newer. There are no dependencies to install.
+Requires Node 24.2 or newer.
 
 ```bash
-npm start
+npm install
+npm run app
 ```
 
-Then open http://localhost:4317.
-The server only listens on 127.0.0.1.
-Set `PORT` to change the port and `AI_USAGE_DATA_DIR` to keep data somewhere other than `./data`.
+The app opens a window and stays in the system tray when the window is closed.
+On first run it turns on **Start with Windows**; untick it in the tray menu to stop that.
+The dashboard is also available at http://127.0.0.1:4317 while the app runs.
 
-## Feeding Claude Code automatically
+`npm start` runs the same dashboard without the tray (useful for development).
 
-Claude Code passes `rate_limits.five_hour` and `rate_limits.seven_day` (percent used and reset time) to its status line command.
-`statusline.js` records those readings into `data/claude-feed.jsonl` and prints a short status line.
-Add this to `~/.claude/settings.json`:
+## Claude accounts: the browser extension
 
-```json
-"statusLine": {
-  "type": "command",
-  "command": "node E:/CODES/ai-usage-dashboard/statusline.js"
-}
-```
+Claude limits are shared by the desktop app, claude.ai and the phone, so they are read from your Claude account itself.
+A small browser extension in `extension/` does this with the claude.ai sign-in you already have in your browser, so there is no password to enter.
+Every 3 minutes it reads the numbers behind claude.ai's Settings > Usage page and sends them only to this app on 127.0.0.1.
 
-The feed works whether or not the dashboard server is running.
-Usage from claude.ai chat shares the same pool but only shows up the next time Claude Code refreshes its status line.
+To connect, click **Add Claude account** in the app, or:
 
-## Reading Antigravity automatically
+1. In Chrome or Edge, open `chrome://extensions` (or `edge://extensions`) and turn on Developer mode.
+2. Click **Load unpacked** and choose the `extension` folder of this repository.
+3. Be signed in at claude.ai in that browser. The account appears within a minute.
 
-While the dashboard server runs, it reads Antigravity's quota once a minute from Antigravity's own local language server, the same source as the IDE quota page.
-It finds the `language_server` process, takes its CSRF token from the process arguments, looks up the localhost ports it listens on, and calls `GetUserStatus`.
-The token is only kept in memory.
-This is not a public API, so it may break when Antigravity updates; the Quick log form stays available as a fallback.
-Set `AI_USAGE_ANTIGRAVITY=off` to turn it off.
+Each browser profile reports the Claude account it is signed in to, so for more Claude accounts, load the extension in each profile.
+Readings arrive while that browser is open.
 
-- Only the account signed in to Antigravity is reported.
-  Each new email is linked to the next free Antigravity row, and **Antigravity logins** under Quick log lets you move it to another row.
-- Claude, GPT-OSS and other non-Flash models are the main bar; Flash models have their own quota and show as a thin second bar.
-- A reset more than about 5 hours away is shown as a weekly lockout ("Weekly limit hit, unlocks ...").
-- A missing `remainingFraction` is read as 0% left, because the response leaves out zero values.
+## Antigravity accounts: automatic
 
-## Logging by hand
+While Antigravity is open, the app reads its quota once a minute from Antigravity's own local language server, the same source as the IDE quota page.
+It finds the `language_server` process, takes its CSRF token from the process arguments (kept in memory only), looks up the localhost ports it listens on, and calls `GetUserStatus`.
 
-Use the Quick log form for any account the app cannot read.
-Copy the used percentage and the "refreshes in" time from the quota page.
-Deleted entries can be restored with Undo for a few seconds.
+- Only the signed-in account is reported, and each new email becomes its own row.
+  An account's quota only drops while you use it, which is when it is signed in, so every account stays tracked; the others count down to their known reset times.
+- Claude, GPT-OSS and other non-Flash models drive the main bar; Flash models show as a thin second bar.
+- A reset more than about 5 hours away is shown as a weekly lockout.
+
+The app does not sign in to Google itself: tools that reuse Antigravity's Google sign-in have led to accounts being suspended.
+
+## Accounts
+
+Each row has a menu with **Rename** and **Remove**.
+Removed accounts keep their history and can be restored from the line under the map.
 
 ## How the numbers are worked out
 
-- **Sessions left this week**: learned from Claude Code readings where the session and weekly percentages moved together.
-  It appears after about half a session of use has been observed.
-  Antigravity has no weekly signal, so it is not counted.
+- **Sessions left this week**: learned from Claude readings where the session and weekly percentages moved together; it appears after about half a session of use has been observed.
+  Antigravity reports a weekly limit only as a lockout, so it is not counted.
 - **Next up**: an open window with capacity left comes first, soonest reset first, because it is lost when it resets.
-  Then an account with no open window.
-  Otherwise, whichever account reopens soonest.
+  Then an account with no open window, otherwise whichever account reopens soonest.
 - **Active session**: the most recent window with a measured burn rate, projected forward to when it runs out.
+
+These sources are not public APIs and can change with Claude or Antigravity updates; the affected row then shows an error.
 
 ## Data files
 
-| File | Written by | Contents |
-| --- | --- | --- |
-| `data/claude-feed.jsonl` | `statusline.js` | One line per change in Claude Code's limits |
-| `data/claude-latest.json` | `statusline.js` | Last reading and when it was last seen |
-| `data/manual-entries.json` | `server.js` | Quick log entries |
-| `data/antigravity-feed.jsonl` | `server.js` | One line per change in an Antigravity account's quota, keyed by email |
-| `data/antigravity-latest.json` | `server.js` | Last reading per email and when it was seen |
-| `data/account-links.json` | `server.js` | Which row each Antigravity email fills |
+All in `data/` (set `AI_USAGE_DATA_DIR` to move it); only the app writes them.
 
-## Test
+| File | Contents |
+| --- | --- |
+| `accounts.json` | The accounts: provider, name, email, removed time |
+| `readings.jsonl` | One line per change in an account's limits |
+| `latest.json` | Last reading per account and when it was seen |
+
+## Development
 
 ```bash
 npm test
+node scripts/make-icons.mjs
 ```

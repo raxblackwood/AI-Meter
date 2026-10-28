@@ -1,23 +1,21 @@
-// File-backed storage. Each file has exactly one writer:
-//   claude-feed.jsonl        append-only, written by statusline.js
-//   claude-latest.json       last feed record, written by statusline.js (dedupe + freshness)
-//   manual-entries.json      written by server.js
-//   antigravity-feed.jsonl   append-only, written by server.js (Antigravity collector)
-//   antigravity-latest.json  last reading per email, written by server.js
-//   account-links.json       email -> account id, written by server.js
-import { appendFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+// File-backed storage, written only by the process that runs the collectors (the desktop app or server.js):
+//   accounts.json   the account list: { id, provider, name, email, createdAt, removedAt? }
+//   readings.jsonl  append-only, one line per change in an account's limits
+//   latest.json     last reading per account and when it was last seen (dedupe and freshness)
+import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
-const FEED_FILE = "claude-feed.jsonl";
-const LATEST_FILE = "claude-latest.json";
-const ENTRIES_FILE = "manual-entries.json";
-const AG_FEED_FILE = "antigravity-feed.jsonl";
-const AG_LATEST_FILE = "antigravity-latest.json";
-const LINKS_FILE = "account-links.json";
-// Rewrite claude-latest.json at most this often when nothing changed, to keep "last seen" fresh.
-const LATEST_REFRESH_MS = 60_000;
+const ACCOUNTS_FILE = "accounts.json";
+const READINGS_FILE = "readings.jsonl";
+const LATEST_FILE = "latest.json";
+
+export const PROVIDERS = {
+  claude: { label: "Claude", plan: "Claude subscription" },
+  antigravity: { label: "Antigravity", plan: "Google AI Pro" },
+};
 
 export function dataDir() {
   return process.env.AI_USAGE_DATA_DIR || join(ROOT, "data");
@@ -39,23 +37,6 @@ function writeJsonAtomic(path, value) {
   renameSync(tmp, path);
 }
 
-/** Converts the status line's `rate_limits` object into a feed record, or null if it has no windows. */
-export function feedRecord(rateLimits, at) {
-  const win = (w) =>
-    w && Number.isFinite(w.used_percentage) && Number.isFinite(w.resets_at)
-      ? { usedPct: w.used_percentage, resetsAt: w.resets_at * 1000 }
-      : null;
-  const session = win(rateLimits?.five_hour);
-  const weekly = win(rateLimits?.seven_day);
-  if (!session && !weekly) return null;
-  return { at, session, weekly };
-}
-
-function sameWindow(a, b) {
-  if (!a || !b) return a === b;
-  return a.usedPct === b.usedPct && a.resetsAt === b.resetsAt;
-}
-
 function readJsonLines(path) {
   let text = "";
   try {
@@ -75,87 +56,120 @@ function readJsonLines(path) {
   return records;
 }
 
-/** Appends a feed record when the limits changed since the last one. Returns true if appended. */
-export function recordFeed(record, dir = dataDir()) {
+// ---------- accounts ----------
+
+export function readAccounts(dir = dataDir()) {
+  migrateLegacy(dir);
+  return readJson(join(dir, ACCOUNTS_FILE), []);
+}
+
+function writeAccounts(accounts, dir) {
+  writeJsonAtomic(join(dir, ACCOUNTS_FILE), accounts);
+}
+
+/** Default name for a new account: "Claude 2", "Antigravity 3", counting removed ones so names stay unique. */
+function nextName(accounts, provider) {
+  const label = PROVIDERS[provider].label;
+  const used = new Set(accounts.map((a) => a.name));
+  for (let n = accounts.filter((a) => a.provider === provider).length + 1; ; n++) {
+    if (!used.has(`${label} ${n}`)) return `${label} ${n}`;
+  }
+}
+
+export function createAccount({ provider, email = null, name = null }, dir = dataDir()) {
+  if (!PROVIDERS[provider]) throw new Error(`Unknown provider ${provider}`);
+  const accounts = readAccounts(dir);
+  const account = { id: randomUUID(), provider, name: name || nextName(accounts, provider), email, createdAt: Date.now() };
+  writeAccounts([...accounts, account], dir);
+  return account;
+}
+
+/** Applies `changes` to one account and returns the updated account, or null if it does not exist. */
+export function updateAccount(id, changes, dir = dataDir()) {
+  const accounts = readAccounts(dir);
+  const index = accounts.findIndex((a) => a.id === id);
+  if (index < 0) return null;
+  const updated = { ...accounts[index], ...changes };
+  accounts[index] = updated;
+  writeAccounts(accounts, dir);
+  return updated;
+}
+
+/**
+ * The account a reading from `provider` with this identity belongs to, created if new.
+ * A removed account stays removed (the user chose that) but keeps its history, so restoring it loses nothing.
+ */
+export function accountForIdentity(provider, email, dir = dataDir()) {
+  const accounts = readAccounts(dir);
+  return accounts.find((a) => a.provider === provider && a.email === email) ?? createAccount({ provider, email }, dir);
+}
+
+// ---------- readings ----------
+
+function sameWindow(a, b) {
+  if (!a || !b) return a === b;
+  return a.usedPct === b.usedPct && a.resetsAt === b.resetsAt;
+}
+
+/**
+ * Stores a reading `{ at, session, weekly, flash? }` for an account. Appends to the feed only when the
+ * limits changed; always refreshes the last-seen time. Returns true if appended.
+ */
+export function recordReading(accountId, reading, dir = dataDir()) {
   const latestPath = join(dir, LATEST_FILE);
-  const latest = readJson(latestPath, null);
-  const changed = !latest || !sameWindow(latest.session, record.session) || !sameWindow(latest.weekly, record.weekly);
-  if (changed) {
-    mkdirSync(dir, { recursive: true });
-    appendFileSync(join(dir, FEED_FILE), JSON.stringify(record) + "\n");
-  }
-  if (changed || record.at - (latest.seenAt ?? latest.at) >= LATEST_REFRESH_MS) {
-    writeJsonAtomic(latestPath, { ...record, at: changed ? record.at : latest.at, seenAt: record.at });
-  }
-  return changed;
-}
-
-/** Claude snapshots from the status line feed, plus when the feed was last seen. */
-export function readFeed(dir = dataDir()) {
-  const snapshots = readJsonLines(join(dir, FEED_FILE)).map((r) => (
-    { accountId: "claude", at: r.at, session: r.session, weekly: r.weekly, source: "statusline" }));
-  const latest = readJson(join(dir, LATEST_FILE), null);
-  return { snapshots, seenAt: latest?.seenAt ?? null };
-}
-
-export function readLinks(dir = dataDir()) {
-  return readJson(join(dir, LINKS_FILE), {});
-}
-
-export function writeLinks(links, dir = dataDir()) {
-  writeJsonAtomic(join(dir, LINKS_FILE), links);
-}
-
-/**
- * Links an Antigravity email to an account the first time it is seen, taking the first
- * candidate account that has no email yet. Returns the account id, or null if all are taken.
- */
-export function linkEmail(email, candidateIds, dir = dataDir()) {
-  const links = readLinks(dir);
-  // A null link means the user unlinked this email on purpose; respect that.
-  if (email in links) return links[email];
-  const taken = new Set(Object.values(links));
-  const free = candidateIds.find((id) => !taken.has(id));
-  if (!free) return null;
-  writeLinks({ ...links, [email]: free }, dir);
-  return free;
-}
-
-/** Appends an Antigravity reading when its limits changed for that email. Returns true if appended. */
-export function recordAntigravity(reading, dir = dataDir()) {
-  const latestPath = join(dir, AG_LATEST_FILE);
   const latest = readJson(latestPath, {});
-  const prev = latest[reading.email];
-  const changed = !prev || !sameWindow(prev.session, reading.session)
-    || !sameWindow(prev.weekly, reading.weekly) || !sameWindow(prev.flash, reading.flash);
+  const prev = latest[accountId];
+  const record = { accountId, at: reading.at, session: reading.session ?? null, weekly: reading.weekly ?? null };
+  if ("flash" in reading) record.flash = reading.flash ?? null;
+  const changed = !prev || !sameWindow(prev.session, record.session)
+    || !sameWindow(prev.weekly, record.weekly) || !sameWindow(prev.flash ?? null, record.flash ?? null);
   if (changed) {
     mkdirSync(dir, { recursive: true });
-    appendFileSync(join(dir, AG_FEED_FILE), JSON.stringify(reading) + "\n");
+    appendFileSync(join(dir, READINGS_FILE), JSON.stringify(record) + "\n");
   }
-  writeJsonAtomic(latestPath, { ...latest, [reading.email]: { ...reading, at: changed ? reading.at : prev.at, seenAt: reading.at } });
+  writeJsonAtomic(latestPath, { ...latest, [accountId]: { ...record, at: changed ? record.at : prev.at, seenAt: reading.at } });
   return changed;
 }
 
+export function readReadings(dir = dataDir()) {
+  return readJsonLines(join(dir, READINGS_FILE)).map((r) => ({ ...r, source: "auto" }));
+}
+
+/** Last-seen time per account id. */
+export function readSeen(dir = dataDir()) {
+  return Object.fromEntries(Object.entries(readJson(join(dir, LATEST_FILE), {})).map(([id, r]) => [id, r.seenAt]));
+}
+
+// ---------- migration ----------
+
 /**
- * Antigravity snapshots mapped to accounts through the email links, so relinking an email
- * moves its whole history. Readings for unlinked emails are left out.
+ * Converts data from the first version (fixed accounts, email links, separate feeds) into the account
+ * list and the shared readings feed. Runs once: only when accounts.json does not exist yet.
  */
-export function readAntigravityFeed(dir = dataDir()) {
-  const links = readLinks(dir);
-  const snapshots = readJsonLines(join(dir, AG_FEED_FILE))
-    .filter((r) => links[r.email])
-    .map((r) => ({ accountId: links[r.email], at: r.at, session: r.session, weekly: r.weekly, flash: r.flash ?? null, source: "antigravity" }));
-  const latest = readJson(join(dir, AG_LATEST_FILE), {});
-  const detected = Object.entries(latest)
-    .map(([email, r]) => ({ email, accountId: links[email] ?? null, seenAt: r.seenAt, plan: r.plan ?? null }))
-    .sort((a, b) => b.seenAt - a.seenAt);
-  return { snapshots, detected };
-}
-
-export function readEntries(dir = dataDir()) {
-  return readJson(join(dir, ENTRIES_FILE), []);
-}
-
-export function writeEntries(entries, dir = dataDir()) {
-  writeJsonAtomic(join(dir, ENTRIES_FILE), entries);
+function migrateLegacy(dir) {
+  if (existsSync(join(dir, ACCOUNTS_FILE))) return;
+  const links = readJson(join(dir, "account-links.json"), null);
+  if (!links) return;
+  const legacyNames = { ag1: "Antigravity 1", ag2: "Antigravity 2", ag3: "Antigravity 3" };
+  const accounts = [];
+  const idByEmail = {};
+  for (const [email, slot] of Object.entries(links)) {
+    if (!slot) continue;
+    const account = { id: randomUUID(), provider: "antigravity", name: legacyNames[slot] ?? email, email, createdAt: Date.now() };
+    accounts.push(account);
+    idByEmail[email] = account.id;
+  }
+  const lines = readJsonLines(join(dir, "antigravity-feed.jsonl"))
+    .filter((r) => idByEmail[r.email])
+    .map((r) => JSON.stringify({ accountId: idByEmail[r.email], at: r.at, session: r.session, weekly: r.weekly, flash: r.flash ?? null }));
+  const legacyLatest = readJson(join(dir, "antigravity-latest.json"), {});
+  const latest = {};
+  for (const [email, r] of Object.entries(legacyLatest)) {
+    const id = idByEmail[email];
+    if (id) latest[id] = { accountId: id, at: r.at, session: r.session, weekly: r.weekly, flash: r.flash ?? null, seenAt: r.seenAt };
+  }
+  mkdirSync(dir, { recursive: true });
+  if (lines.length) appendFileSync(join(dir, READINGS_FILE), lines.join("\n") + "\n");
+  writeJsonAtomic(join(dir, LATEST_FILE), latest);
+  writeAccounts(accounts, dir);
 }

@@ -95,7 +95,8 @@ export function accountView(account, allSnapshots, now, spanStart, spanEnd) {
   const snapshots = allSnapshots
     .filter((s) => s.accountId === account.id && s.at <= now)
     .sort((a, b) => a.at - b.at);
-  const anchored = account.feed === "statusline";
+  // Claude windows start at the first message, so a window always began exactly 5 hours before its reset.
+  const anchored = account.provider === "claude";
   const groups = groupSessions(snapshots);
   const lastGroup = groups[groups.length - 1];
   const currentGroup = lastGroup && lastGroup.resetsAt > now ? lastGroup : null;
@@ -132,7 +133,7 @@ export function accountView(account, allSnapshots, now, spanStart, spanEnd) {
   }
 
   // Antigravity Flash models have their own quota; shown as a secondary bar only.
-  const lastFlash = [...snapshots].reverse().find((s) => s.source === "antigravity")?.flash;
+  const lastFlash = [...snapshots].reverse().find((s) => s.flash !== undefined)?.flash;
   const flash = lastFlash && lastFlash.resetsAt > now ? lastFlash : null;
   const exhausted = Boolean(weekly && weekly.usedPct >= 100);
 
@@ -219,7 +220,7 @@ export function summarize(views, now) {
     suggestion = null;
   }
 
-  // A single fresh manual log is not evidence of use, so the active session needs a measured burn rate.
+  // A single fresh reading is not evidence of use, so the active session needs a measured burn rate.
   const active = views
     .filter((v) => v.session.state === "open" && v.session.burnPerHour && now - v.session.lastSeenAt <= ACTIVE_WITHIN_MS)
     .sort((a, b) => b.session.lastSeenAt - a.session.lastSeenAt)[0] ?? null;

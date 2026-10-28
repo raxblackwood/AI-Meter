@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="color-scheme" content="dark light">
+  <title>AI Usage Connector</title>
+  <style>
+    :root { --bg: #121215; --text: #f4f4f5; --text-2: #a1a1aa; --border: rgba(255,255,255,.1); --accent: #6366f1; --ok: #34d399; --danger: #f87171; }
+    @media (prefers-color-scheme: light) {
+      :root { --bg: #fff; --text: #18181b; --text-2: #52525b; --border: rgba(0,0,0,.1); --accent: #4f46e5; --ok: #059669; --danger: #dc2626; }
+    }
+    body { margin: 0; width: 300px; background: var(--bg); color: var(--text); font: 13px/1.45 "Segoe UI", system-ui, sans-serif; }
+    main { padding: 14px 16px 16px; display: grid; gap: 10px; }
+    h1 { font-size: 14px; margin: 0; }
+    p { margin: 0; color: var(--text-2); }
+    .state { display: flex; gap: 8px; align-items: baseline; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-2); flex: none; transform: translateY(-1px); }
+    .ok .dot { background: var(--ok); }
+    .bad .dot { background: var(--danger); }
+    .state strong { font-weight: 600; word-break: break-all; }
+    .actions { display: flex; gap: 8px; }
+    a, button { font: inherit; font-weight: 500; height: 30px; padding: 0 12px; border-radius: 6px; display: inline-flex; align-items: center; text-decoration: none; cursor: pointer; }
+    .primary { background: var(--accent); color: #fff; border: 0; }
+    .ghost { background: transparent; color: var(--text); border: 1px solid var(--border); }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>AI Usage Connector</h1>
+    <div class="state" id="state"><span class="dot"></span><span>Checking...</span></div>
+    <p id="detail"></p>
+    <div class="actions">
+      <a class="primary" id="open" href="http://127.0.0.1:4317/" target="_blank">Open dashboard</a>
+      <a class="ghost" id="claude" href="https://claude.ai/login" target="_blank" hidden>Sign in to Claude</a>
+    </div>
+  </main>
+  <script src="popup.js" type="module"></script>
+</body>
+</html>

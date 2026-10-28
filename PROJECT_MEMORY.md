@@ -1,71 +1,68 @@
 ---
-summary: "Local Node dashboard that tracks remaining Claude Code and Antigravity usage per 5-hour session and per week, and suggests which account to use next."
+summary: "Desktop tray app that tracks remaining Claude and Antigravity usage per 5-hour session and per week across any number of accounts, and suggests which account to use next."
 workspace: "E:\\CODES\\ai-usage-dashboard"
-stack: "Node 24 (no dependencies), vanilla HTML/CSS/JS ES modules, node:test"
+stack: "Electron 45 tray app + Node 24 local server (no runtime deps), vanilla JS UI, Chrome MV3 extension, node:test"
 type: project-hub
 ---
 
 # AI Usage Dashboard
 
 > [!ABSTRACT] Quick Summary (Token-Saving Preview)
-> **Scope**: Personal planner for AI coding quotas across 1 Claude Pro account (Claude Code) and 3 Google AI Pro accounts (Antigravity 1, 2, 3).
-> **Stack**: Node 24 local server with no dependencies, vanilla JS front end, JSON/JSONL files for storage.
+> **Scope**: Personal planner for AI coding quotas across any number of Claude and Antigravity accounts, fully automatic.
+> **Stack**: Electron tray app hosting a Node local server; Claude read by a browser extension; Antigravity read from its local language server.
 > **Contains**: Status, milestone progress, verified facts, open issues and next steps.
 > **Skip if**: Your task is unrelated to AI usage limits, session planning or **AI Usage Dashboard**.
 
 - **Status**: #project #active
 - **Origin idea**: [[ai-usage-dashboard]]
 - **Sub-Documents**: [[AI Usage Dashboard - Architecture|Architecture]] | [[AI Usage Dashboard - Decisions|Decisions]] | [[AI Usage Dashboard - Identity|Project Identity]]
-- **Repository**: `E:\CODES\ai-usage-dashboard`, GitHub https://github.com/raxblackwood/Ai-usage-dashboard (branch `main`, first commit `3cf75cf` on 2026-10-28)
+- **Repository**: `E:\CODES\ai-usage-dashboard`, GitHub https://github.com/raxblackwood/Ai-usage-dashboard (branch `main`)
 
 ## Current Status (2026-10-28)
 
-- **Milestone**: v1.1, automatic Antigravity reading, built and verified live against the running Antigravity IDE.
-  The signed-in account auto-linked to Antigravity 1 and showed its real weekly lockout and Flash quota.
-  The Claude Code status line is wired in `~/.claude/settings.json`; it feeds from terminal `claude` sessions, not from the desktop app.
-- **Run**: `npm start`, then open http://localhost:4317.
-- **Tests**: `npm test`, 22 passing (model, Antigravity collector and parsing, status line feeder, API, static serving).
+- **Milestone**: v0.2, desktop app with automatic multi-account tracking.
+  - Electron tray app (`npm run app`), starts with Windows, window hides to tray.
+  - Antigravity: verified live with two accounts (both auto-detected as separate rows).
+  - Claude: browser extension built (`extension/`); waiting for Rax to load it in Chrome for the first live reading.
+  - Manual logging and the Claude Code status line were removed at Rax's request (he uses the Claude desktop app, not the terminal; status line entry removed from `~/.claude/settings.json`).
+- **Tests**: `npm test`, 30 passing.
+
+## Rax's Requirements (2026-10-28)
+
+- Fully automatic; no manual logging.
+- Scalable to any number of accounts per provider, added by logging in.
+- Logins must happen in his normal browser (already signed in to Google there), not in a separate app window that asks for his password again.
 
 ## Milestones
 
-- [x] Promote the idea to a registered project (2026-10-28).
-- [x] Verify what Claude Code exposes: the status line JSON includes `rate_limits.five_hour` and `rate_limits.seven_day` with `used_percentage` and `resets_at` (epoch seconds), confirmed in Claude Code 2.1.302.
-- [x] v1: local server, status line feeder, quick log, weekly map, planner strip, undo for entries.
-- [x] v1.1: Antigravity collector reading the local language server every minute, readings stored by email, auto-linking to rows, relink with undo, Flash secondary bar, weekly lockout display (2026-10-28).
-- [x] Wire `statusline.js` into `~/.claude/settings.json` (approved by Rax, done 2026-10-28: `"statusLine": { "type": "command", "command": "node \"E:/CODES/ai-usage-dashboard/statusline.js\"" }`).
-- [ ] Confirm the first real Claude reading lands in `data/claude-feed.jsonl` from a terminal `claude` session (the desktop app Code tab did not run the status line).
-- [ ] Sign in to Antigravity accounts 2 and 3 once each so they get linked.
-- [ ] Use it for 1 to 2 weeks and check the calibration, lockout handling and suggestions against reality.
-- [ ] v2 candidates: start the server automatically at login; optional Claude fallback via `/api/oauth/usage` when Claude Code is closed.
+- [x] v1: local server, weekly map, planner strip (2026-10-28).
+- [x] v1.1: Antigravity read automatically from the local language server (2026-10-28).
+- [x] v0.2: Electron tray app, dynamic accounts (rename, remove, restore), Claude via browser extension, migration of v1 data (2026-10-28).
+- [x] In-app Claude sign-in window tried and dropped: Google sign-in there needed his password again.
+- [ ] First live Claude reading through the extension (verify `/api/organizations/{org}/usage` shape and that extension fetches carry the claude.ai cookies).
+- [ ] Use it for 1 to 2 weeks and check calibration, lockout handling and suggestions against reality.
+- [ ] Later: package an installer (electron-builder) so it does not run from the source folder; optionally publish the extension.
 
 ## Verified Facts
 
-- Claude Code 2.1.302 passes `rate_limits` to the status line command for subscribers, after the first API response, only while a window is present and its reset has not passed.
-- Claude Code runs on Windows 11.
-- Subscription plans (Claude Pro, Google AI Pro) have no official usage API.
-  API-key dashboards rely on official billing APIs that only cover pay-per-token API use, not plan quotas.
-- **Antigravity local endpoint (verified 2026-10-28, probe approved by Rax)**:
-  - `language_server.exe` takes `--csrf_token`; `--https_server_port` was `0` on a later launch, so the port is random and must be looked up from the OS (it listened on 4 localhost ports).
-  - `POST /exa.language_server_pb.LanguageServerService/GetUserStatus` with header `X-Codeium-Csrf-Token` and body `{"metadata":{"ideName":"antigravity","extensionName":"antigravity","locale":"en"}}` returns 200 over HTTPS on one port (self-signed certificate) and over plain HTTP on another.
-  - The response has `userStatus.email`, `userTier.name` ("Google AI Pro"), and per model `cascadeModelConfigData.clientModelConfigs[].quotaInfo` with `resetTime` (ISO UTC) and `remainingFraction`.
-  - Models share quota groups: Gemini Flash variants together (5-hour reset); Claude Sonnet, Claude Opus and GPT-OSS together (reset about 2 days out on 2026-10-28, a weekly lockout).
-  - `remainingFraction` was absent in every quota; protobuf JSON omits zero values, so the app reads it as 0% left.
-    Rax approved building on this; not yet compared side by side with the IDE quota page.
-  - "Gemini 4 Argon" returned an empty `quotaInfo` and is ignored.
-  - Only the signed-in account is reported.
-- Rejected: logging in to Google or Anthropic from this app through their official clients' OAuth (against their terms, risks the accounts).
+- Subscription plans (Claude Pro, Google AI Pro) have no official usage API; API-key dashboards use billing APIs that do not cover plan quotas.
+- **Antigravity local endpoint (verified 2026-10-28)**: `language_server.exe` takes `--csrf_token`; `--https_server_port` can be `0`, so ports are looked up from the OS.
+  `POST /exa.language_server_pb.LanguageServerService/GetUserStatus` (header `X-Codeium-Csrf-Token`) answers on one of its loopback ports over HTTPS (self-signed) or HTTP.
+  Response: `userStatus.email`, `userTier.name`, per model `quotaInfo { resetTime, remainingFraction }`; missing fraction means 0.
+  Quota groups: Flash models together (5-hour), Claude/GPT-OSS models together; a reset days away is a weekly lockout (seen: 2 days and 7 days).
+- Using Antigravity's Google OAuth from third-party tools led to many reported account suspensions (Google AI developer forum, 2026), so the app never signs in to Google.
+- Claude: community trackers read `claude.ai/api/organizations/{orgId}/usage` (`five_hour` / `seven_day` with `utilization` and `resets_at`) with the web session. Not yet verified live here.
 
 ## Known Limitations
 
-- Antigravity is read only while the IDE is open and only for the signed-in account; other accounts keep their last reading.
-- The Antigravity endpoint is undocumented and may change with Antigravity updates; Quick log remains the fallback.
-- Antigravity weekly usage is only visible as a lockout (0% left with a reset days away), not as a percentage, so it is not counted in "Sessions left this week".
-- Antigravity window start times are assumed to be 5 hours before the reset, for drawing only.
-- claude.ai chat usage shares the Claude pool but only appears when Claude Code next refreshes its status line.
-- Weekly percentages from Claude are integers, so calibration is coarse until several sessions are observed.
+- Antigravity is read only while the IDE is open and only for the signed-in account; other accounts keep their last reading and reset times.
+- Claude readings arrive only while the browser with the extension is open; one Claude account per browser profile.
+- Both sources are undocumented and may change; the row shows an error when a read fails.
+- Antigravity weekly usage is only visible as a lockout, so it is not counted in "Sessions left this week".
+- The app runs from the source folder via `electron.exe`; autostart points there.
 
 ## Next Steps
 
-1. Send one message in a terminal `claude` session and confirm the Claude row starts updating.
-2. Sign in to each Antigravity account once with the dashboard running, and check the rows are linked correctly.
-3. Compare the dashboard with the IDE quota page after a window resets, to confirm the 0% reading and the lockout detection.
+1. Rax loads `extension/` in Chrome (Developer mode, Load unpacked) and confirms the Claude row appears.
+2. Fix anything the first live Claude reading reveals.
+3. Package an installer when the data sources have proven stable.

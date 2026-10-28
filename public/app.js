@@ -1,15 +1,23 @@
 import { accountView, DAY, MINUTE, summarize } from "./model.js";
 
 const REFRESH_MS = 30_000;
+// While the setup panel is open, check often so a new account shows up as soon as it reports.
+const CONNECT_REFRESH_MS = 3_000;
 const UNDO_MS = 8_000;
 // The weekly map shows yesterday plus the next six days.
 const SPAN_DAYS_BEFORE = 1;
 const SPAN_DAYS = 7;
+// An Antigravity reading older than this means that account is not the one signed in right now.
+const CURRENT_WITHIN_MS = 3 * MINUTE;
+const PROVIDER_ORDER = { claude: 0, antigravity: 1 };
 
 const $ = (id) => document.getElementById(id);
 let state = null;
 let toastTimer = null;
 let undoAction = null;
+let refreshTimer = null;
+let openMenuId = null;
+let renamingId = null;
 
 // ---------- formatting ----------
 
@@ -51,52 +59,69 @@ const sessions = (n) => (n >= 10 ? n.toFixed(0) : n.toFixed(1));
 
 // ---------- rendering ----------
 
+function sortedAccounts() {
+  return [...state.accounts].sort((a, b) =>
+    (PROVIDER_ORDER[a.provider] ?? 9) - (PROVIDER_ORDER[b.provider] ?? 9) || a.createdAt - b.createdAt);
+}
+
 function render() {
   if (!state) return;
   const now = Date.now();
   const spanStart = startOfDay(now) - SPAN_DAYS_BEFORE * DAY;
   const spanEnd = spanStart + SPAN_DAYS * DAY;
-  const views = state.accounts.map((a) => accountView(a, state.snapshots, now, spanStart, spanEnd));
-  const summary = summarize(views, now);
+  const views = sortedAccounts().map((a) => accountView(a, state.snapshots, now, spanStart, spanEnd));
 
-  renderFeedStatus(now);
-  renderSummary(summary, now);
+  renderHeader(now);
+  renderSummary(summarize(views, now), now);
   renderBoard(views, now, spanStart, spanEnd);
-  renderEntries(now);
-  renderLinks(now);
+  renderRemoved();
 }
 
-function renderLinks(now) {
-  const detected = state.antigravity?.detected ?? [];
-  $("links").hidden = !detected.length;
-  if (!detected.length) return;
-  const options = state.accounts.filter((a) => a.feed === "antigravity");
-  $("links-list").innerHTML = detected.map((d) => `<li>
-      <span><strong>${esc(d.email)}</strong> <span class="muted-2">seen ${ago(now - d.seenAt)}</span></span>
-      <select data-link-email="${esc(d.email)}" aria-label="Account for ${esc(d.email)}">
-        ${options.map((a) => `<option value="${esc(a.id)}" ${a.id === d.accountId ? "selected" : ""}>${esc(a.name)}</option>`).join("")}
-        <option value="" ${d.accountId ? "" : "selected"}>Not linked</option>
-      </select>
-    </li>`).join("");
+function renderRemoved() {
+  const removed = state.removed ?? [];
+  $("removed").hidden = !removed.length;
+  $("removed").innerHTML = removed.length
+    ? `Removed: ${removed.map((a) => `<span class="removed-item">${esc(a.name)}
+        <button type="button" class="link-button" data-restore="${esc(a.id)}" aria-label="Restore ${esc(a.name)}">Restore</button></span>`).join("")}`
+    : "";
 }
 
-function renderFeedStatus(now) {
-  const seen = state.feedSeenAt;
-  const claude = seen
-    ? `Claude Code feed seen ${ago(now - seen)}`
-    : "Claude Code feed not connected yet. Set statusline.js as your status line.";
-  const collector = state.antigravity?.collector;
-  const current = state.antigravity?.detected.find((d) => d.seenAt >= (collector?.checkedAt ?? Infinity) - MINUTE);
-  const antigravity = !collector ? "Antigravity reading is off"
-    : collector.state === "ok" && current ? `Antigravity: reading ${current.email}`
-    : collector.state === "not-running" ? "Antigravity is not running"
-    : collector.state === "error" ? `Antigravity unreadable: ${collector.error}`
-    : "Antigravity: checking";
-  $("feed-status").textContent = `${claude} · ${antigravity}`;
+function renderHeader(now) {
+  const parts = [];
+  const claude = state.accounts.filter((a) => a.provider === "claude");
+  const reported = state.connector.claudeSeenAt;
+  if (claude.length || reported) {
+    const problems = claude.filter((a) => state.status[a.id]?.state === "signed-out").length;
+    parts.push(problems ? `Claude: ${problems} of ${claude.length} signed out`
+      : reported ? `Claude: browser reported ${ago(now - reported)}`
+      : "Claude: waiting for the browser extension (is the browser open?)");
+  }
+  const ag = state.antigravity;
+  const current = state.accounts.find((a) => a.provider === "antigravity" && now - (state.seen[a.id] ?? 0) <= CURRENT_WITHIN_MS);
+  parts.push(ag.state === "ok" && current ? `Antigravity: reading ${current.email}`
+    : ag.state === "not-running" ? "Antigravity is not open"
+    : ag.state === "error" ? `Antigravity unreadable: ${ag.error}`
+    : "Antigravity: checking");
+  $("feed-status").textContent = parts.join(" · ");
+  renderConnect(now);
 }
 
-/** The detected Antigravity login linked to an account, if any. */
-const linkedLogin = (accountId) => state.antigravity?.detected.find((d) => d.accountId === accountId) ?? null;
+function renderConnect(now) {
+  $("extension-dir").textContent = state.connector.extensionDir;
+  const reported = state.connector.claudeSeenAt;
+  const claude = state.accounts.filter((a) => a.provider === "claude");
+  $("connect-status").textContent = reported
+    ? `Connected. The extension last reported ${ago(now - reported)}${claude.length ? `; accounts: ${claude.map((a) => a.email ?? a.name).join(", ")}` : ""}.`
+    : "Waiting for the extension. This updates on its own once it is loaded.";
+  $("connect-status").classList.toggle("connect-ok", Boolean(reported));
+}
+
+function toggleConnect(open) {
+  $("connect").hidden = !open;
+  $("add-claude").setAttribute("aria-expanded", String(open));
+  clearTimeout(refreshTimer);
+  load();
+}
 
 function tile(label, value, detail, tone = "") {
   return `<article class="tile ${tone}">
@@ -110,7 +135,7 @@ function renderSummary(summary, now) {
   const tiles = [];
   const s = summary.suggestion;
   if (!s) {
-    tiles.push(tile("Next up", "-", "No accounts configured."));
+    tiles.push(tile("Next up", "-", "Add an account to get suggestions."));
   } else {
     const name = esc(s.view.account.name);
     const detail = {
@@ -125,13 +150,12 @@ function renderSummary(summary, now) {
 
   const a = summary.active;
   if (a) {
-    const rate = a.session.burnPerHour ? `${pct(a.session.burnPerHour)}/h, ` : "";
+    const rate = `${pct(a.session.burnPerHour)}/h, `;
     tiles.push(a.session.projectedFullAt
       ? tile("Active session", `Full by ~${when(a.session.projectedFullAt, now)}`,
         `${esc(a.account.name)}: ${rate}${pct(a.session.usedPct)} used. Resets ${when(a.session.resetsAt, now)}.`, "tile-warn")
-      : tile("Active session", `Lasts to ${when(a.session.resetsAt, now)}`, a.session.burnPerHour
-        ? `${esc(a.account.name)}: ${rate}${pct(a.session.usedPct)} used. At this pace the window resets first.`
-        : `${esc(a.account.name)}: ${pct(a.session.usedPct)} used. Log again later to project when it runs out.`));
+      : tile("Active session", `Lasts to ${when(a.session.resetsAt, now)}`,
+        `${esc(a.account.name)}: ${rate}${pct(a.session.usedPct)} used. At this pace the window resets first.`));
   } else {
     tiles.push(tile("Active session", "None", "No session used in the last 30 minutes."));
   }
@@ -140,7 +164,9 @@ function renderSummary(summary, now) {
   const untracked = left.unknown.length ? ` Not counted: ${esc(left.unknown.join(", "))}.` : "";
   tiles.push(left.known
     ? tile("Sessions left this week", sessions(left.total), `Full 5-hour sessions the weekly caps still allow.${untracked}`)
-    : tile("Sessions left this week", "-", "Calibrating. Needs about half a session of Claude Code use with the feed on."));
+    : tile("Sessions left this week", "-", state.accounts.some((x) => x.provider === "claude")
+      ? "Learning how much of the weekly cap a session costs. Needs about half a session of Claude use."
+      : "Add a Claude account to estimate this."));
 
   const next = summary.nextReset;
   tiles.push(tile("Ready now", `${summary.readyCount} of ${state.accounts.length}`,
@@ -151,35 +177,42 @@ function renderSummary(summary, now) {
 
 function accountMeta(v, now) {
   const lines = [];
+  const status = state.status[v.account.id];
+  const seen = state.seen[v.account.id];
+
+  if (status?.state === "signed-out") {
+    lines.push(`<span class="text-danger">Signed out of claude.ai in the browser</span>`);
+  } else if (status?.state === "error") {
+    lines.push(`<span class="text-danger">Could not read: ${esc(status.error)}</span>`);
+  }
+
   if (v.session.state === "open") {
     lines.push(`<span class="num">${pct(100 - v.session.usedPct)}</span> left, resets ${when(v.session.resetsAt, now)}`);
-  } else if (!v.exhausted) {
+  } else if (!v.exhausted && seen) {
     lines.push("No open window, ready to start");
   }
-  const login = linkedLogin(v.account.id);
   if (v.exhausted) {
     lines.push(`<span class="text-danger">Weekly limit hit</span>, unlocks ${when(v.weekly.resetsAt, now)}`);
-  } else if (v.weekly) {
-    lines.push(v.weekly.resetsAt
-      ? `Week <span class="num">${pct(v.weekly.usedPct)}</span> used, resets ${when(v.weekly.resetsAt, now)}`
-      : "Week reset, waiting for new data");
-  } else if (login) {
+  } else if (v.weekly?.resetsAt) {
+    lines.push(`Week <span class="num">${pct(v.weekly.usedPct)}</span> used, resets ${when(v.weekly.resetsAt, now)}`);
+  } else if (v.account.provider === "antigravity" && seen) {
     lines.push(`<span class="muted-2">No weekly lock</span>`);
-  } else {
-    lines.push(`<span class="muted-2">Weekly cap not tracked</span>`);
   }
   if (v.flash) {
     lines.push(`Flash <span class="num">${pct(100 - v.flash.usedPct)}</span> left, resets ${when(v.flash.resetsAt, now)}`);
   }
   if (v.sessionsLeft !== null) {
     lines.push(`<span class="num">${sessions(v.sessionsLeft)}</span> sessions left this week`);
-  } else if (v.account.feed === "statusline") {
+  } else if (v.account.provider === "claude" && seen) {
     lines.push(`<span class="muted-2">Calibrating (${pct(v.calibration.observedSessionPct)} of 50% observed)</span>`);
   }
-  if (login) {
-    lines.push(`<span class="muted-2">Read ${ago(now - login.seenAt)}</span>`);
-  } else if (v.lastSeenAt && v.account.feed !== "statusline") {
-    lines.push(`<span class="muted-2">Logged ${ago(now - v.lastSeenAt)}</span>`);
+
+  if (!seen) {
+    lines.push(`<span class="muted-2">${v.account.provider === "claude" ? "Waiting for the first reading" : "Not read yet"}</span>`);
+  } else if (v.account.provider === "antigravity" && now - seen > CURRENT_WITHIN_MS) {
+    lines.push(`<span class="muted-2">Last read ${ago(now - seen)}, updates when you use it in Antigravity</span>`);
+  } else {
+    lines.push(`<span class="muted-2">Updated ${ago(now - seen)}</span>`);
   }
   return lines.map((l) => `<span>${l}</span>`).join("");
 }
@@ -191,8 +224,47 @@ function blockTitle(w, v, now) {
     case "past": return `${v.account.name}, ${range}: peaked at ${pct(w.usedPct)}, ${pct(100 - w.usedPct)} unused`;
     case "planned": return `${v.account.name}, possible window ${range}`;
     case "partial": return `${v.account.name}, possible window ${range}: about ${pct(w.capacityPct)} of a session left in the weekly budget`;
-    default: return `${v.account.name}, ${range}: beyond the weekly budget`;
+    default: return `${v.account.name}, ${range}: beyond the weekly budget or locked`;
   }
+}
+
+function rowHead(v) {
+  const a = v.account;
+  const status = state.status[a.id]?.state;
+  const remaining = v.exhausted ? 0 : v.session.state === "open" ? 100 - v.session.usedPct : 100;
+  const meterTone = v.exhausted || remaining <= 5 ? "meter-empty" : remaining <= 25 ? "meter-low" : "";
+  const subtitle = a.email ?? state.providers[a.provider]?.plan ?? "";
+  const title = renamingId === a.id
+    ? `<input class="rename-input" data-rename="${esc(a.id)}" value="${esc(a.name)}" maxlength="40" aria-label="Account name">`
+    : `<h3>${esc(a.name)}</h3>`;
+  const signInAgain = a.provider === "claude" && status === "signed-out"
+    ? `<a class="btn btn-primary btn-small" href="https://claude.ai/login" target="_blank" rel="noopener">Sign in</a>` : "";
+  const menu = openMenuId === a.id
+    ? `<div class="menu" role="menu">
+        <button type="button" role="menuitem" data-action="rename" data-id="${esc(a.id)}">Rename</button>
+        <button type="button" role="menuitem" class="menu-danger" data-action="remove" data-id="${esc(a.id)}">Remove</button>
+      </div>` : "";
+  const flashBar = v.flash
+    ? `<div class="meter meter-thin" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(100 - v.flash.usedPct)}" aria-label="${esc(a.name)} Flash left">
+        <span style="width:${100 - v.flash.usedPct}%"></span>
+      </div>` : "";
+  return `<div class="row-head">
+      <div class="row-title">
+        <div class="row-name">${title}<span class="muted-2" title="${esc(subtitle)}">${esc(subtitle)}</span></div>
+        <div class="row-actions">
+          ${signInAgain}
+          <button type="button" class="btn btn-ghost btn-icon" data-menu="${esc(a.id)}" aria-haspopup="menu" aria-expanded="${openMenuId === a.id}" aria-label="Options for ${esc(a.name)}">&#8943;</button>
+          ${menu}
+        </div>
+      </div>
+      <div class="meters">
+        <div class="meter ${meterTone}" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(remaining)}" aria-label="${esc(a.name)} session left">
+          <span style="width:${remaining}%"></span>
+        </div>
+        ${flashBar}
+      </div>
+      <div class="row-meta">${accountMeta(v, Date.now())}</div>
+    </div>`;
 }
 
 function renderBoard(views, now, spanStart, spanEnd) {
@@ -202,9 +274,8 @@ function renderBoard(views, now, spanStart, spanEnd) {
   const days = [];
   for (let i = 0; i < SPAN_DAYS; i++) {
     const t = spanStart + i * DAY;
-    const isToday = t === startOfDay(now);
     const d = new Date(t);
-    days.push(`<div class="day ${isToday ? "day-today" : ""}" style="left:${x(t)}%;width:${100 / SPAN_DAYS}%">
+    days.push(`<div class="day ${t === startOfDay(now) ? "day-today" : ""}" style="left:${x(t)}%;width:${100 / SPAN_DAYS}%">
       <span>${d.toLocaleDateString([], { weekday: "short" })}</span>
       <span class="num">${d.getDate()}</span>
     </div>`);
@@ -214,66 +285,43 @@ function renderBoard(views, now, spanStart, spanEnd) {
   const nowLine = `<span class="now-line" style="left:${x(now)}%"></span>`;
 
   const rows = views.map((v) => {
-    const blocks = v.windows
+    // Until an account has been read there is nothing to plan.
+    const windows = state.seen[v.account.id] ? v.windows : [];
+    const blocks = windows
       .filter((w) => w.end > spanStart && w.start < spanEnd)
       .map((w) => {
         const left = x(w.start);
         const width = x(w.end) - left;
-        const fill = w.kind === "current" ? 100 - w.usedPct
-          : w.kind === "past" ? 100 - w.usedPct
-          : w.kind === "over" ? 0 : w.capacityPct;
+        const fill = w.kind === "current" || w.kind === "past" ? 100 - w.usedPct : w.kind === "over" ? 0 : w.capacityPct;
         const title = esc(blockTitle(w, v, now));
         return `<span class="block block-${w.kind}" style="left:${left}%;width:${width}%" title="${title}" aria-label="${title}" role="img">
           <span class="block-fill" style="height:${fill}%"></span>
         </span>`;
       }).join("");
     const weekly = v.weekly?.resetsAt && v.weekly.resetsAt < spanEnd
-      ? `<span class="weekly-mark" style="left:${x(v.weekly.resetsAt)}%" title="Weekly reset ${esc(when(v.weekly.resetsAt, now))}"></span>`
-      : "";
-    const remaining = v.exhausted ? 0 : v.session.state === "open" ? 100 - v.session.usedPct : 100;
-    const meterTone = v.exhausted || remaining <= 5 ? "meter-empty" : remaining <= 25 ? "meter-low" : "";
-    const login = linkedLogin(v.account.id);
-    const autoBadge = v.account.feed === "statusline"
-      ? `<span class="badge" title="Updated by the Claude Code status line">Auto</span>`
-      : login ? `<span class="badge" title="Read from Antigravity while ${esc(login.email)} is signed in">Auto</span>` : "";
-    const logButton = v.account.feed === "statusline" ? ""
-      : `<button type="button" class="btn btn-ghost btn-small" data-log="${esc(v.account.id)}" aria-label="Log ${esc(v.account.name)}">Log</button>`;
-    const subtitle = login ? login.email : v.account.plan;
-    const flashBar = v.flash
-      ? `<div class="meter meter-thin" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(100 - v.flash.usedPct)}" aria-label="${esc(v.account.name)} Flash left">
-          <span style="width:${100 - v.flash.usedPct}%"></span>
-        </div>`
-      : "";
-    return `<div class="row-head">
-        <div class="row-title">
-          <div class="row-name"><h3>${esc(v.account.name)}</h3><span class="muted-2" title="${esc(subtitle)}">${esc(subtitle)}</span></div>
-          <div class="row-actions">${autoBadge}${logButton}</div>
-        </div>
-        <div class="meters">
-          <div class="meter ${meterTone}" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(remaining)}" aria-label="${esc(v.account.name)} session left">
-            <span style="width:${remaining}%"></span>
-          </div>
-          ${flashBar}
-        </div>
-        <div class="row-meta">${accountMeta(v, now)}</div>
-      </div>
-      <div class="track">${gridLines}${blocks}${weekly}${nowLine}</div>`;
+      ? `<span class="weekly-mark" style="left:${x(v.weekly.resetsAt)}%" title="Weekly reset ${esc(when(v.weekly.resetsAt, now))}"></span>` : "";
+    return `${rowHead(v)}<div class="track">${gridLines}${blocks}${weekly}${nowLine}</div>`;
   }).join("");
 
-  $("board").innerHTML = `<div class="axis-spacer"></div><div class="axis">${days.join("")}${nowLine}</div>${rows}`;
+  const empty = views.length ? "" : `<div class="empty">
+      <h3>No accounts yet</h3>
+      <p class="muted">Use <strong>Add Claude account</strong> to connect Claude through your browser. Antigravity accounts appear on their own while Antigravity is open.</p>
+    </div>`;
+
+  const focusKey = focusSelector(document.activeElement);
+  $("board").innerHTML = `<div class="axis-spacer"></div><div class="axis">${days.join("")}${nowLine}</div>${rows}${empty}`;
+  // Redrawing replaces the elements, so put keyboard focus back on the same control.
+  if (focusKey) document.querySelector(focusKey)?.focus();
 }
 
-function renderEntries(now) {
-  const names = Object.fromEntries(state.accounts.map((a) => [a.id, a.name]));
-  const recent = state.entries.slice(0, 8);
-  $("entries").innerHTML = recent.length
-    ? recent.map((e) => `<li>
-        <span><strong>${esc(names[e.accountId] ?? e.accountId)}</strong>
-        <span class="muted">${pct(e.session.usedPct)} used, refreshes ${when(e.session.resetsAt, now)}</span></span>
-        <span class="entry-side"><span class="muted-2">${when(e.at, now)}</span>
-        <button type="button" class="btn btn-ghost btn-small" data-delete="${esc(e.id)}" aria-label="Delete entry">Delete</button></span>
-      </li>`).join("")
-    : `<li class="muted">No manual entries yet.</li>`;
+/** A selector that finds the same control after a redraw, or null if it is not one of the board's. */
+function focusSelector(el) {
+  if (!el?.closest?.("#board")) return null;
+  for (const attr of ["data-rename", "data-menu"]) {
+    if (el.hasAttribute(attr)) return `[${attr}="${CSS.escape(el.getAttribute(attr))}"]`;
+  }
+  if (el.dataset.action) return `[data-action="${CSS.escape(el.dataset.action)}"][data-id="${CSS.escape(el.dataset.id)}"]`;
+  return null;
 }
 
 // ---------- data ----------
@@ -292,23 +340,14 @@ async function api(method, path, body) {
 async function load() {
   try {
     state = await api("GET", "/api/state");
-    populateAccounts();
-    render();
+    // Do not redraw under the user while they type a new name or use a menu.
+    if (!renamingId && !openMenuId) render();
+    else renderHeader(Date.now());
   } catch (err) {
-    $("feed-status").textContent = `Cannot reach the dashboard server: ${err.message}`;
+    $("feed-status").textContent = `Cannot reach the dashboard: ${err.message}`;
   }
-}
-
-function populateAccounts() {
-  const select = $("log-account");
-  if (select.options.length) return;
-  for (const a of state.accounts) {
-    const opt = new Option(a.name, a.id);
-    select.add(opt);
-  }
-  // Default to the first account the app cannot read on its own.
-  const unread = state.accounts.find((a) => a.feed !== "statusline" && !linkedLogin(a.id));
-  select.value = (unread ?? state.accounts.find((a) => a.feed !== "statusline") ?? state.accounts[0]).id;
+  clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(load, $("connect").hidden ? REFRESH_MS : CONNECT_REFRESH_MS);
 }
 
 function showToast(text, undo) {
@@ -325,81 +364,99 @@ function hideToast() {
   undoAction = null;
 }
 
-// ---------- events ----------
-
-$("log-form").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const form = event.currentTarget;
-  const data = new FormData(form);
-  const usedPct = Number(data.get("usedPct"));
-  const minutes = Number(data.get("hours") || 0) * 60 + Number(data.get("minutes") || 0);
-  $("log-error").textContent = "";
-  if (data.get("usedPct") === "" || !(usedPct >= 0 && usedPct <= 100)) {
-    $("log-error").textContent = "Enter the used percentage, from 0 to 100.";
-    $("log-used").focus();
-    return;
-  }
-  if (!(minutes > 0)) {
-    $("log-error").textContent = "Enter when the quota refreshes.";
-    form.elements.hours.focus();
-    return;
-  }
-  try {
-    const entry = await api("POST", "/api/entries", {
-      accountId: data.get("accountId"),
-      usedPct,
-      resetsAt: Date.now() + minutes * MINUTE,
-    });
-    for (const name of ["usedPct", "hours", "minutes"]) form.elements[name].value = "";
-    await load();
-    showToast(`Logged ${state.accounts.find((a) => a.id === entry.accountId)?.name}.`, async () => {
-      await api("DELETE", `/api/entries/${entry.id}`);
-    });
-  } catch (err) {
-    $("log-error").textContent = err.message;
-  }
-});
-
-document.addEventListener("click", async (event) => {
-  const logBtn = event.target.closest("[data-log]");
-  if (logBtn) {
-    $("log-account").value = logBtn.dataset.log;
-    $("log-used").focus();
-    $("log-used").scrollIntoView({ block: "center", behavior: "smooth" });
-    return;
-  }
-  const delBtn = event.target.closest("[data-delete]");
-  if (delBtn) {
+async function finishRename(id, save) {
+  const input = document.querySelector(`[data-rename="${CSS.escape(id)}"]`);
+  const name = input?.value.trim();
+  renamingId = null;
+  const account = state.accounts.find((a) => a.id === id);
+  if (save && name && account && name !== account.name) {
     try {
-      const removed = await api("DELETE", `/api/entries/${delBtn.dataset.delete}`);
-      await load();
-      showToast("Entry deleted.", async () => {
-        await api("POST", "/api/entries", removed.session && {
-          id: removed.id, accountId: removed.accountId, at: removed.at,
-          usedPct: removed.session.usedPct, resetsAt: removed.session.resetsAt,
-        });
-      });
+      await api("PATCH", `/api/accounts/${id}`, { name });
     } catch (err) {
       showToast(err.message, null);
     }
   }
+  await load();
+  render();
+}
+
+// ---------- events ----------
+
+$("add-claude").addEventListener("click", () => toggleConnect($("connect").hidden));
+$("connect-close").addEventListener("click", () => {
+  toggleConnect(false);
+  $("add-claude").focus();
+});
+$("copy-dir").addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(state.connector.extensionDir);
+    showToast("Folder path copied.", null);
+  } catch {
+    showToast("Could not copy. Select the path and copy it instead.", null);
+  }
 });
 
-document.addEventListener("change", async (event) => {
-  const select = event.target.closest("[data-link-email]");
-  if (!select) return;
-  const email = select.dataset.linkEmail;
-  const previous = state.antigravity.detected.find((d) => d.email === email)?.accountId ?? null;
-  const setLink = (accountId) => api("PUT", "/api/links", { email, accountId });
-  try {
-    await setLink(select.value || null);
-    await load();
-    const text = select.value ? `Linked ${email} to ${select.selectedOptions[0].text}.` : `Unlinked ${email}.`;
-    showToast(text, async () => setLink(previous));
-  } catch (err) {
-    showToast(err.message, null);
-    await load();
+document.addEventListener("click", async (event) => {
+  const menuButton = event.target.closest("[data-menu]");
+  if (menuButton) {
+    openMenuId = openMenuId === menuButton.dataset.menu ? null : menuButton.dataset.menu;
+    render();
+    document.querySelector(".menu button")?.focus();
+    return;
   }
+  const item = event.target.closest("[data-action]");
+  if (item) {
+    const id = item.dataset.id;
+    openMenuId = null;
+    if (item.dataset.action === "rename") {
+      renamingId = id;
+      render();
+      const input = document.querySelector(`[data-rename="${CSS.escape(id)}"]`);
+      input?.focus();
+      input?.select();
+    } else if (item.dataset.action === "remove") {
+      try {
+        const removed = await api("DELETE", `/api/accounts/${id}`);
+        await load();
+        showToast(`Removed ${removed.name}. You can restore it below the map.`, () => api("POST", `/api/accounts/${id}/restore`));
+      } catch (err) {
+        showToast(err.message, null);
+      }
+    }
+    return;
+  }
+  const restore = event.target.closest("[data-restore]");
+  if (restore) {
+    try {
+      await api("POST", `/api/accounts/${restore.dataset.restore}/restore`);
+      await load();
+    } catch (err) {
+      showToast(err.message, null);
+    }
+    return;
+  }
+  if (openMenuId && !event.target.closest(".menu")) {
+    openMenuId = null;
+    render();
+  }
+});
+
+document.addEventListener("keydown", (event) => {
+  const input = event.target.closest?.("[data-rename]");
+  if (input && (event.key === "Enter" || event.key === "Escape")) {
+    event.preventDefault();
+    finishRename(input.dataset.rename, event.key === "Enter");
+  } else if (event.key === "Escape" && openMenuId) {
+    const id = openMenuId;
+    openMenuId = null;
+    render();
+    document.querySelector(`[data-menu="${CSS.escape(id)}"]`)?.focus();
+  }
+});
+
+document.addEventListener("focusout", (event) => {
+  const input = event.target.closest?.("[data-rename]");
+  if (input && renamingId === input.dataset.rename) finishRename(input.dataset.rename, true);
 });
 
 $("toast-undo").addEventListener("click", async () => {
@@ -415,7 +472,8 @@ $("toast-undo").addEventListener("click", async () => {
 });
 
 load();
-setInterval(load, REFRESH_MS);
+// Keep the "now" line and countdowns moving between data refreshes.
+setInterval(() => !renamingId && !openMenuId && render(), REFRESH_MS);
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") load();
 });

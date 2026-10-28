@@ -1,11 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ACCOUNTS } from "../public/accounts.js";
 import { accountView, calibrate, HOUR, MINUTE, SESSION_MS, summarize } from "../public/model.js";
 
 const NOW = Date.UTC(2026, 9, 28, 12, 0);
-const claude = ACCOUNTS.find((a) => a.id === "claude");
-const ag1 = ACCOUNTS.find((a) => a.id === "ag1");
+const claude = { id: "claude", provider: "claude", name: "Claude 1" };
+const ag1 = { id: "ag1", provider: "antigravity", name: "Antigravity 1" };
 const span = [NOW - 24 * HOUR, NOW + 6 * 24 * HOUR];
 
 function snap(accountId, at, sessionPct, resetsAt, weekly = null) {
@@ -75,7 +74,7 @@ test("the planner prefers an open window that would otherwise expire unused", ()
   assert.equal(s.active.account.id, "claude");
 });
 
-test("a fresh manual log without a burn rate is not the active session", () => {
+test("a single fresh reading without a burn rate is not the active session", () => {
   const views = [
     accountView(claude, [snap("claude", NOW - 10 * MINUTE, 30, NOW + 2 * HOUR)], NOW, ...span),
     accountView(ag1, [snap("ag1", NOW - MINUTE, 20, NOW + 4 * HOUR)], NOW, ...span),

@@ -6,6 +6,10 @@
       "runtimeExecutable": "node",
       "runtimeArgs": ["server.js"],
       "port": 4317
+    },
+    {
+      "name": "desktop-app",
+      "url": "http://127.0.0.1:4317"
     }
   ]
 }
