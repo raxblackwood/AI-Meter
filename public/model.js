@@ -167,7 +167,13 @@ function planWindows({ session, weekly, exhausted, calibration, sessionsLeft, no
 
   const planned = [];
   let refilled = false;
-  for (let cursor = session.state === "open" ? session.resetsAt : now; cursor < spanEnd; cursor += SESSION_MS) {
+  let cursor = session.state === "open" ? session.resetsAt : now;
+  // A lockout is one locked stretch, and the next window can start the moment it lifts.
+  if (exhausted && weekly?.resetsAt > cursor) {
+    planned.push({ start: cursor, end: weekly.resetsAt, capacityPct: 0, kind: "over" });
+    cursor = weekly.resetsAt;
+  }
+  for (; cursor < spanEnd; cursor += SESSION_MS) {
     if (!refilled && weekly?.resetsAt && cursor >= weekly.resetsAt) {
       budget = calibration.ready ? calibration.sessionsPerWeek : Infinity;
       refilled = true;

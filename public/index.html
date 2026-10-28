@@ -11,14 +11,16 @@
 </head>
 <body>
   <header class="top">
-    <div class="top-text">
-      <h1>AI Usage</h1>
-      <p class="muted" id="feed-status">Loading...</p>
+    <h1>AI Usage</h1>
+    <div class="top-actions">
+      <span class="live" id="live" role="status"><span class="live-dot" aria-hidden="true"></span><span id="live-text">Loading</span></span>
+      <button type="button" class="btn btn-primary" id="add-account" aria-expanded="false" aria-controls="connect">Add account</button>
     </div>
-    <button type="button" class="btn btn-primary" id="add-account" aria-expanded="false" aria-controls="connect">Add account</button>
   </header>
 
   <main>
+    <div class="alerts" id="alerts" role="alert"></div>
+
     <section class="connect" id="connect" aria-labelledby="connect-title" hidden>
       <div class="connect-head">
         <h2 id="connect-title">Add an account</h2>
@@ -71,20 +73,29 @@
       </div>
     </section>
 
-    <section class="summary" id="summary" aria-label="Planner"></section>
+    <section class="hero" id="hero" aria-label="Next up"></section>
 
-    <section class="board" aria-label="Weekly map">
+    <section class="board" aria-labelledby="board-title">
+      <div class="board-head">
+        <h2 id="board-title">Schedule</h2>
+        <div class="segmented" role="radiogroup" aria-label="Time range">
+          <button type="button" role="radio" aria-checked="true" data-range="3d">3 days</button>
+          <button type="button" role="radio" aria-checked="false" data-range="week">Week</button>
+        </div>
+      </div>
       <div class="board-scroll">
         <div class="board-grid" id="board"></div>
       </div>
-      <ul class="legend" aria-label="Legend">
-        <li><span class="swatch swatch-current"></span>Current window, fill is what is left</li>
-        <li><span class="swatch swatch-past"></span>Past window, fill is what went unused</li>
-        <li><span class="swatch swatch-planned"></span>Possible next window</li>
-        <li><span class="swatch swatch-over"></span>Beyond the weekly budget or locked</li>
-        <li><span class="swatch swatch-weekly"></span>Weekly reset</li>
-      </ul>
-      <p class="removed" id="removed" hidden></p>
+      <div class="board-foot">
+        <ul class="legend" aria-label="Legend">
+          <li><span class="swatch swatch-current"></span>Left now</li>
+          <li><span class="swatch swatch-past"></span>Went unused</li>
+          <li><span class="swatch swatch-planned"></span>Next windows</li>
+          <li><span class="swatch swatch-over"></span>Locked</li>
+          <li><span class="swatch swatch-weekly"></span>Weekly reset</li>
+        </ul>
+        <p class="removed" id="removed" hidden></p>
+      </div>
     </section>
   </main>
 

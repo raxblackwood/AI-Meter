@@ -73,6 +73,11 @@ test("a locked-out account is not suggested until its lockout ends", () => {
   const locked = { accountId: "ag1", at: NOW, session: null, weekly: { usedPct: 100, resetsAt: NOW + 50 * HOUR }, flash: null, source: "antigravity" };
   const v = accountView(ag1, [locked], NOW, NOW - 24 * HOUR, NOW + 6 * 24 * HOUR);
   assert.equal(v.exhausted, true);
+  // One locked stretch until the unlock, then the first window starts right at the unlock time.
+  assert.deepEqual(v.windows.slice(0, 2).map((w) => [w.kind, w.start, w.end]), [
+    ["over", NOW, NOW + 50 * HOUR],
+    ["planned", NOW + 50 * HOUR, NOW + 55 * HOUR],
+  ]);
   const s = summarize([v], NOW);
   assert.equal(s.suggestion.kind, "weekly-wait");
   assert.equal(s.suggestion.at, NOW + 50 * HOUR);

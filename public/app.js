@@ -1,15 +1,21 @@
-import { accountView, DAY, MINUTE, summarize } from "./model.js";
+import { accountView, DAY, HOUR, MINUTE, summarize } from "./model.js";
 
 const REFRESH_MS = 30_000;
 // While the setup panel is open, check often so a new account shows up as soon as it reports.
 const CONNECT_REFRESH_MS = 3_000;
 const UNDO_MS = 8_000;
-// The weekly map shows yesterday plus the next six days.
-const SPAN_DAYS_BEFORE = 1;
-const SPAN_DAYS = 7;
+// Time ranges for the schedule. "3d" starts a few hours back so the current window is in view.
+const RANGES = {
+  "3d": (now) => [now - 6 * HOUR, now - 6 * HOUR + 3 * DAY],
+  week: (now) => [startOfDay(now) - DAY, startOfDay(now) + 6 * DAY],
+};
+// Room needed for a bar's start time: "01:10" in full, or just the hour ("01") in narrow bars.
+const FULL_LABEL_PX = 36;
+const HOUR_LABEL_PX = 18;
 // An Antigravity reading older than this means that account is not the one signed in right now.
 const CURRENT_WITHIN_MS = 3 * MINUTE;
 const PROVIDER_ORDER = { claude: 0, antigravity: 1 };
+const RANGE_KEY = "ai-usage.range";
 
 const $ = (id) => document.getElementById(id);
 let state = null;
@@ -18,6 +24,18 @@ let undoAction = null;
 let refreshTimer = null;
 let openMenuId = null;
 let renamingId = null;
+let loadError = null;
+let range = readRange();
+
+/** The remembered time range; storage can be unavailable, so fall back quietly. */
+function readRange() {
+  try {
+    const saved = localStorage.getItem(RANGE_KEY);
+    return saved in RANGES ? saved : "3d";
+  } catch {
+    return "3d";
+  }
+}
 
 // ---------- formatting ----------
 
@@ -67,12 +85,11 @@ function sortedAccounts() {
 function render() {
   if (!state) return;
   const now = Date.now();
-  const spanStart = startOfDay(now) - SPAN_DAYS_BEFORE * DAY;
-  const spanEnd = spanStart + SPAN_DAYS * DAY;
+  const [spanStart, spanEnd] = RANGES[range](now);
   const views = sortedAccounts().map((a) => accountView(a, state.snapshots, now, spanStart, spanEnd));
 
-  renderHeader(now);
-  renderSummary(summarize(views, now), now);
+  renderStatus(now);
+  renderHero(summarize(views, now), views, now);
   renderBoard(views, now, spanStart, spanEnd);
   renderRemoved();
 }
@@ -86,25 +103,26 @@ function renderRemoved() {
     : "";
 }
 
-function renderHeader(now) {
-  const parts = [];
-  const claude = state.accounts.filter((a) => a.provider === "claude");
-  // The last reading is on disk, so it survives an app restart; the extension's last report does not.
-  const updated = Math.max(0, ...claude.map((a) => state.seen[a.id] ?? 0));
-  if (claude.length || state.connector.claudeSeenAt) {
-    const problems = claude.filter((a) => state.status[a.id]?.state === "signed-out").length;
-    parts.push(problems ? `Claude: ${problems} of ${claude.length} signed out`
-      : state.connector.error ? `Claude: the browser extension could not read claude.ai (${state.connector.error})`
-      : updated ? `Claude: updated ${ago(now - updated)}`
-      : "Claude: waiting for the first reading");
-  }
+/**
+ * The header shows one quiet freshness indicator; details live in its tooltip. Only problems the rows
+ * cannot show on their own get an alert line.
+ */
+function renderStatus(now) {
+  const alerts = [];
+  if (loadError) alerts.push(`Cannot reach the dashboard: ${loadError}`);
+  if (state.connector.error) alerts.push(`The browser extension could not read claude.ai: ${state.connector.error}`);
+  if (state.antigravity.state === "error") alerts.push(`Antigravity could not be read: ${state.antigravity.error}`);
+  $("alerts").innerHTML = alerts.map((a) => `<p class="alert">${esc(a)}</p>`).join("");
+
+  const latest = Math.max(0, ...Object.values(state.seen));
   const ag = state.antigravity;
   const current = state.accounts.find((a) => a.provider === "antigravity" && now - (state.seen[a.id] ?? 0) <= CURRENT_WITHIN_MS);
-  parts.push(ag.state === "ok" && current ? `Antigravity: reading ${current.email}`
-    : ag.state === "not-running" ? "Antigravity is not open"
-    : ag.state === "error" ? `Antigravity unreadable: ${ag.error}`
-    : "Antigravity: checking");
-  $("feed-status").textContent = parts.join(" · ");
+  $("live-text").textContent = loadError ? "Offline" : latest ? `Updated ${ago(now - latest)}` : "Waiting for data";
+  $("live").classList.toggle("live-off", Boolean(loadError) || !latest);
+  $("live").title = [
+    ag.state === "ok" && current ? `Antigravity: reading ${current.email}` : ag.state === "not-running" ? "Antigravity: not open" : "Antigravity: checking",
+    state.signIn.available ? "Claude: read by the app and the browser extension" : "Claude: read by the browser extension",
+  ].join("\n");
   renderConnect(now);
 }
 
@@ -169,120 +187,82 @@ function selectProvider(provider) {
   }
 }
 
-function tile(label, value, detail, tone = "") {
-  return `<article class="tile ${tone}">
-    <h2 class="tile-label">${esc(label)}</h2>
-    <p class="tile-value">${value}</p>
-    <p class="tile-detail">${detail}</p>
-  </article>`;
-}
-
-function renderSummary(summary, now) {
-  const tiles = [];
+/** One focal point: where to work next. The projection and weekly total join it only when they exist. */
+function renderHero(summary, views, now) {
   const s = summary.suggestion;
   if (!s) {
-    tiles.push(tile("Next up", "-", "Add an account to get suggestions."));
-  } else {
-    const name = esc(s.view.account.name);
-    const detail = {
-      "use-open": `Use it now: ${pct(s.remainingPct)} left, window closes ${when(s.until, now)}.`,
-      "start-fresh": `Start now: opens a 5-hour window until ${when(s.until, now)}.`,
-      "session-wait": `All windows are used. This one reopens ${when(s.at, now)}, in ${duration(s.at - now)}.`,
-      "weekly-wait": `All weekly caps are used. This one resets ${when(s.at, now)}, in ${duration(s.at - now)}.`,
-    }[s.kind];
-    const value = s.at <= now ? name : `${name} <span class="tile-at">at ${when(s.at, now)}</span>`;
-    tiles.push(tile("Next up", value, detail, "tile-primary"));
+    $("hero").innerHTML = `<div class="hero-main">
+        <p class="hero-label">Next up</p>
+        <p class="hero-title">Add an account to begin</p>
+      </div>`;
+    return;
   }
+  const name = esc(s.view.account.name);
+  const [title, detail] = {
+    "use-open": [`${name}`, `${pct(s.remainingPct)} left until ${when(s.until, now)}`],
+    "start-fresh": [`${name}`, `Ready. A new window would run until ${when(s.until, now)}`],
+    "session-wait": [`${name} <span class="hero-at">at ${when(s.at, now)}</span>`, `Every window is used. Opens in ${duration(s.at - now)}`],
+    "weekly-wait": [`${name} <span class="hero-at">at ${when(s.at, now)}</span>`, `Weekly limits reached. Unlocks in ${duration(s.at - now)}`],
+  }[s.kind];
 
+  const side = [];
   const a = summary.active;
-  if (a) {
-    const rate = `${pct(a.session.burnPerHour)}/h, `;
-    tiles.push(a.session.projectedFullAt
-      ? tile("Active session", `Full by ~${when(a.session.projectedFullAt, now)}`,
-        `${esc(a.account.name)}: ${rate}${pct(a.session.usedPct)} used. Resets ${when(a.session.resetsAt, now)}.`, "tile-warn")
-      : tile("Active session", `Lasts to ${when(a.session.resetsAt, now)}`,
-        `${esc(a.account.name)}: ${rate}${pct(a.session.usedPct)} used. At this pace the window resets first.`));
-  } else {
-    tiles.push(tile("Active session", "None", "No session used in the last 30 minutes."));
+  if (a?.session.projectedFullAt) {
+    side.push(`<div class="hero-side">
+        <p class="hero-label">At this pace</p>
+        <p class="hero-stat hero-warn">Full by ${when(a.session.projectedFullAt, now)}</p>
+        <p class="hero-detail">${esc(a.account.name)}, ${pct(a.session.burnPerHour)} an hour</p>
+      </div>`);
   }
-
-  const left = summary.sessionsLeft;
-  const untracked = left.unknown.length ? ` Not counted: ${esc(left.unknown.join(", "))}.` : "";
-  tiles.push(left.known
-    ? tile("Sessions left this week", sessions(left.total), `Full 5-hour sessions the weekly caps still allow.${untracked}`)
-    : tile("Sessions left this week", "-", state.accounts.some((x) => x.provider === "claude")
-      ? "Learning how much of the weekly cap a session costs. Needs about half a session of Claude use."
-      : "Add a Claude account to estimate this."));
-
-  const next = summary.nextReset;
-  tiles.push(tile("Ready now", `${summary.readyCount} of ${state.accounts.length}`,
-    next ? `Next reset: ${esc(next.account.name)} at ${when(next.session.resetsAt, now)}.` : "No open windows."));
-
-  $("summary").innerHTML = tiles.join("");
+  if (summary.sessionsLeft.known) {
+    side.push(`<div class="hero-side">
+        <p class="hero-label">This week</p>
+        <p class="hero-stat">${sessions(summary.sessionsLeft.total)} sessions left</p>
+      </div>`);
+  }
+  $("hero").innerHTML = `<div class="hero-main">
+      <p class="hero-label">Next up</p>
+      <p class="hero-title">${title}</p>
+      <p class="hero-detail">${detail}</p>
+    </div>${side.join("")}`;
 }
 
-function accountMeta(v, now) {
-  const lines = [];
-  const status = state.status[v.account.id];
+/** The one number that matters for a row, and a short line of context under it. */
+function rowSummary(v, now) {
+  const status = state.status[v.account.id]?.state;
   const seen = state.seen[v.account.id];
-
-  if (status?.state === "signed-out") {
-    lines.push(`<span class="text-danger">Signed out of claude.ai in the browser</span>`);
-  } else if (status?.state === "error") {
-    lines.push(`<span class="text-danger">Could not read: ${esc(status.error)}</span>`);
-  }
-
-  if (v.session.state === "open") {
-    lines.push(`<span class="num">${pct(100 - v.session.usedPct)}</span> left, resets ${when(v.session.resetsAt, now)}`);
-  } else if (!v.exhausted && seen) {
-    lines.push("No open window, ready to start");
-  }
-  if (v.exhausted) {
-    lines.push(`<span class="text-danger">Weekly limit hit</span>, unlocks ${when(v.weekly.resetsAt, now)}`);
-  } else if (v.weekly?.resetsAt) {
-    lines.push(`Week <span class="num">${pct(v.weekly.usedPct)}</span> used, resets ${when(v.weekly.resetsAt, now)}`);
-  } else if (v.account.provider === "antigravity" && seen) {
-    lines.push(`<span class="muted-2">No weekly lock</span>`);
-  }
-  if (v.flash) {
-    lines.push(`Flash <span class="num">${pct(100 - v.flash.usedPct)}</span> left, resets ${when(v.flash.resetsAt, now)}`);
-  }
-  if (v.sessionsLeft !== null) {
-    lines.push(`<span class="num">${sessions(v.sessionsLeft)}</span> sessions left this week`);
-  } else if (v.account.provider === "claude" && seen) {
-    lines.push(`<span class="muted-2">Calibrating (${pct(v.calibration.observedSessionPct)} of 50% observed)</span>`);
-  }
-
-  if (!seen) {
-    lines.push(`<span class="muted-2">${v.account.provider === "claude" ? "Waiting for the first reading" : "Not read yet"}</span>`);
-  } else if (v.account.provider === "antigravity" && now - seen > CURRENT_WITHIN_MS) {
-    lines.push(`<span class="muted-2">Last read ${ago(now - seen)}, updates when you use it in Antigravity</span>`);
+  const details = [];
+  let headline;
+  if (status === "signed-out") {
+    headline = `<span class="row-figure row-figure-muted">Signed out</span>`;
+  } else if (status === "error") {
+    headline = `<span class="row-figure row-figure-muted" title="${esc(state.status[v.account.id].error)}">Not readable</span>`;
+  } else if (!seen) {
+    headline = `<span class="row-figure row-figure-muted">Waiting</span>`;
+  } else if (v.exhausted) {
+    headline = `<span class="row-figure row-figure-danger">Locked</span>`;
+    details.push(`until ${when(v.weekly.resetsAt, now)}`);
+  } else if (v.session.state === "open") {
+    const left = 100 - v.session.usedPct;
+    const tone = left <= 5 ? "row-figure-danger" : left <= 25 ? "row-figure-warn" : "";
+    headline = `<span class="row-figure ${tone}"><span class="num">${pct(left)}</span> left</span>`;
+    details.push(`until ${when(v.session.resetsAt, now)}`);
   } else {
-    lines.push(`<span class="muted-2">Updated ${ago(now - seen)}</span>`);
+    headline = `<span class="row-figure">Ready</span>`;
   }
-  return lines.map((l) => `<span>${l}</span>`).join("");
+  if (!v.exhausted && v.weekly?.resetsAt) details.push(`week ${pct(v.weekly.usedPct)}`);
+  if (v.flash) details.push(`Flash ${pct(100 - v.flash.usedPct)}`);
+  if (v.sessionsLeft !== null) details.push(`${sessions(v.sessionsLeft)} sessions left`);
+  return `${headline}${details.length ? `<span class="row-detail">${details.join(" · ")}</span>` : ""}`;
 }
 
-function blockTitle(w, v, now) {
-  const range = `${when(w.start, now)} - ${when(w.end, now)}`;
-  switch (w.kind) {
-    case "current": return `${v.account.name}, current window ${range}: ${pct(100 - w.usedPct)} left`;
-    case "past": return `${v.account.name}, ${range}: peaked at ${pct(w.usedPct)}, ${pct(100 - w.usedPct)} unused`;
-    case "planned": return `${v.account.name}, possible window ${range}`;
-    case "partial": return `${v.account.name}, possible window ${range}: about ${pct(w.capacityPct)} of a session left in the weekly budget`;
-    default: return `${v.account.name}, ${range}: beyond the weekly budget or locked`;
-  }
-}
-
-function rowHead(v) {
+function rowHead(v, now) {
   const a = v.account;
   const status = state.status[a.id]?.state;
-  const remaining = v.exhausted ? 0 : v.session.state === "open" ? 100 - v.session.usedPct : 100;
-  const meterTone = v.exhausted || remaining <= 5 ? "meter-empty" : remaining <= 25 ? "meter-low" : "";
-  const subtitle = a.email ?? state.providers[a.provider]?.plan ?? "";
   const title = renamingId === a.id
     ? `<input class="rename-input" data-rename="${esc(a.id)}" value="${esc(a.name)}" maxlength="40" aria-label="Account name">`
     : `<h3>${esc(a.name)}</h3>`;
+  const subtitle = a.email ?? state.providers[a.provider]?.plan ?? "";
   // A signed-out account is fixed where it was signed in: in this app, or at claude.ai in the browser.
   const appSignIn = a.signedInHere && state.signIn.available;
   const signInAgain = a.provider !== "claude" || status !== "signed-out" ? ""
@@ -294,44 +274,62 @@ function rowHead(v) {
         ${appSignIn ? `<button type="button" role="menuitem" data-action="sign-in" data-id="${esc(a.id)}">Sign in again</button>` : ""}
         <button type="button" role="menuitem" class="menu-danger" data-action="remove" data-id="${esc(a.id)}">Remove</button>
       </div>` : "";
-  const flashBar = v.flash
-    ? `<div class="meter meter-thin" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(100 - v.flash.usedPct)}" aria-label="${esc(a.name)} Flash left">
-        <span style="width:${100 - v.flash.usedPct}%"></span>
-      </div>` : "";
   return `<div class="row-head">
       <div class="row-title">
-        <div class="row-name">${title}<span class="muted-2" title="${esc(subtitle)}">${esc(subtitle)}</span></div>
+        <div class="row-name">${title}<span class="row-email" title="${esc(subtitle)}">${esc(subtitle)}</span></div>
         <div class="row-actions">
-          ${signInAgain}
           <button type="button" class="btn btn-ghost btn-icon" data-menu="${esc(a.id)}" aria-haspopup="menu" aria-expanded="${openMenuId === a.id}" aria-label="Options for ${esc(a.name)}">&#8943;</button>
           ${menu}
         </div>
       </div>
-      <div class="meters">
-        <div class="meter ${meterTone}" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(remaining)}" aria-label="${esc(a.name)} session left">
-          <span style="width:${remaining}%"></span>
-        </div>
-        ${flashBar}
-      </div>
-      <div class="row-meta">${accountMeta(v, Date.now())}</div>
+      <div class="row-summary">${rowSummary(v, now)}</div>
+      ${signInAgain ? `<div>${signInAgain}</div>` : ""}
     </div>`;
+}
+
+function blockTitle(w, v, now) {
+  const period = `${when(w.start, now)} - ${when(w.end, now)}`;
+  switch (w.kind) {
+    case "current": return `${v.account.name}, current window ${period}: ${pct(100 - w.usedPct)} left`;
+    case "past": return `${v.account.name}, ${period}: peaked at ${pct(w.usedPct)}, ${pct(100 - w.usedPct)} unused`;
+    case "planned": return `${v.account.name}, next window could start ${when(w.start, now)} and run to ${when(w.end, now)}`;
+    case "partial": return `${v.account.name}, window from ${when(w.start, now)}: about ${pct(w.capacityPct)} of a session left in the weekly budget`;
+    default: return `${v.account.name}, ${period}: locked or beyond the weekly budget`;
+  }
+}
+
+/** Every usable bar says when it starts: in full when it fits, else the hour; the tooltip has the exact time. */
+function startLabel(start, widthPx) {
+  if (widthPx >= FULL_LABEL_PX) return `<span class="block-label">${clock(start)}</span>`;
+  if (widthPx >= HOUR_LABEL_PX) return `<span class="block-label">${String(new Date(start).getHours()).padStart(2, "0")}</span>`;
+  return "";
+}
+
+/** Day labels centered on the visible part of each day, with a line at each midnight. */
+function axis(spanStart, spanEnd, now, x) {
+  const labels = [];
+  const lines = [];
+  for (let day = startOfDay(spanStart); day < spanEnd; day += DAY) {
+    const from = Math.max(day, spanStart);
+    const to = Math.min(day + DAY, spanEnd);
+    if (day > spanStart) lines.push(`<span class="gridline" style="left:${x(day)}%"></span>`);
+    // A sliver of a day at the edge gets no label.
+    if ((to - from) / (spanEnd - spanStart) < 0.06) continue;
+    const d = new Date(day);
+    labels.push(`<div class="day ${day === startOfDay(now) ? "day-today" : ""}" style="left:${x(from)}%;width:${x(to) - x(from)}%">
+        <span>${day === startOfDay(now) ? "Today" : d.toLocaleDateString([], { weekday: "short" })}</span>
+        <span class="num">${d.getDate()}</span>
+      </div>`);
+  }
+  return { labels: labels.join(""), lines: lines.join("") };
 }
 
 function renderBoard(views, now, spanStart, spanEnd) {
   const span = spanEnd - spanStart;
   const x = (t) => ((Math.min(Math.max(t, spanStart), spanEnd) - spanStart) / span) * 100;
-
-  const days = [];
-  for (let i = 0; i < SPAN_DAYS; i++) {
-    const t = spanStart + i * DAY;
-    const d = new Date(t);
-    days.push(`<div class="day ${t === startOfDay(now) ? "day-today" : ""}" style="left:${x(t)}%;width:${100 / SPAN_DAYS}%">
-      <span>${d.toLocaleDateString([], { weekday: "short" })}</span>
-      <span class="num">${d.getDate()}</span>
-    </div>`);
-  }
-  const gridLines = Array.from({ length: SPAN_DAYS - 1 }, (_, i) =>
-    `<span class="gridline" style="left:${x(spanStart + (i + 1) * DAY)}%"></span>`).join("");
+  // Measure the timeline to know which bars have room for their start time.
+  const trackPx = document.querySelector(".track")?.clientWidth || document.querySelector(".axis")?.clientWidth || 900;
+  const { labels, lines } = axis(spanStart, spanEnd, now, x);
   const nowLine = `<span class="now-line" style="left:${x(now)}%"></span>`;
 
   const rows = views.map((v) => {
@@ -344,13 +342,15 @@ function renderBoard(views, now, spanStart, spanEnd) {
         const width = x(w.end) - left;
         const fill = w.kind === "current" || w.kind === "past" ? 100 - w.usedPct : w.kind === "over" ? 0 : w.capacityPct;
         const title = esc(blockTitle(w, v, now));
+        // Every usable bar says when it starts; locked bars stay quiet.
+        const label = w.kind === "over" || w.start < spanStart ? "" : startLabel(w.start, (width / 100) * trackPx);
         return `<span class="block block-${w.kind}" style="left:${left}%;width:${width}%" title="${title}" aria-label="${title}" role="img">
-          <span class="block-fill" style="height:${fill}%"></span>
+          ${label}<span class="block-body"><span class="block-fill" style="height:${fill}%"></span></span>
         </span>`;
       }).join("");
     const weekly = v.weekly?.resetsAt && v.weekly.resetsAt < spanEnd
       ? `<span class="weekly-mark" style="left:${x(v.weekly.resetsAt)}%" title="Weekly reset ${esc(when(v.weekly.resetsAt, now))}"></span>` : "";
-    return `${rowHead(v)}<div class="track">${gridLines}${blocks}${weekly}${nowLine}</div>`;
+    return `${rowHead(v, now)}<div class="track">${lines}${blocks}${weekly}${nowLine}</div>`;
   }).join("");
 
   const empty = views.length ? "" : `<div class="empty">
@@ -359,7 +359,7 @@ function renderBoard(views, now, spanStart, spanEnd) {
     </div>`;
 
   const focusKey = focusSelector(document.activeElement);
-  $("board").innerHTML = `<div class="axis-spacer"></div><div class="axis">${days.join("")}${nowLine}</div>${rows}${empty}`;
+  $("board").innerHTML = `<div class="axis-spacer"></div><div class="axis">${labels}${nowLine}</div>${rows}${empty}`;
   // Redrawing replaces the elements, so put keyboard focus back on the same control.
   if (focusKey) document.querySelector(focusKey)?.focus();
 }
@@ -372,6 +372,19 @@ function focusSelector(el) {
   }
   if (el.dataset.action) return `[data-action="${CSS.escape(el.dataset.action)}"][data-id="${CSS.escape(el.dataset.id)}"]`;
   return null;
+}
+
+function setRange(next) {
+  range = next;
+  try {
+    localStorage.setItem(RANGE_KEY, next);
+  } catch {
+    // The choice just is not remembered.
+  }
+  for (const button of document.querySelectorAll("[data-range]")) {
+    button.setAttribute("aria-checked", String(button.dataset.range === next));
+  }
+  render();
 }
 
 // ---------- data ----------
@@ -390,12 +403,13 @@ async function api(method, path, body) {
 async function load() {
   try {
     state = await api("GET", "/api/state");
-    // Do not redraw under the user while they type a new name or use a menu.
-    if (!renamingId && !openMenuId) render();
-    else renderHeader(Date.now());
+    loadError = null;
   } catch (err) {
-    $("feed-status").textContent = `Cannot reach the dashboard: ${err.message}`;
+    loadError = err.message;
   }
+  // Do not redraw under the user while they type a new name or use a menu.
+  if (state && !renamingId && !openMenuId) render();
+  else if (state) renderStatus(Date.now());
   clearTimeout(refreshTimer);
   const waiting = !$("connect").hidden || state?.signIn.pending;
   refreshTimer = setTimeout(load, waiting ? CONNECT_REFRESH_MS : REFRESH_MS);
@@ -434,6 +448,10 @@ async function finishRename(id, save) {
 // ---------- events ----------
 
 $("add-account").addEventListener("click", () => toggleConnect($("connect").hidden));
+for (const button of document.querySelectorAll("[data-range]")) {
+  button.addEventListener("click", () => setRange(button.dataset.range));
+}
+setRange(range);
 for (const option of document.querySelectorAll("[data-provider]")) {
   option.addEventListener("click", () => selectProvider(option.dataset.provider));
 }
