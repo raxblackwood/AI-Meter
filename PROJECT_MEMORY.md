@@ -44,7 +44,7 @@ type: project-hub
 - [x] Store prep: `npm run pack-extension` (zip in `dist/`), `PRIVACY.md`, `docs/chrome-web-store.md` (listing, permission justifications, data disclosures), `config.chromeWebStoreUrl` in package.json switches Add account > Claude to an install button.
 - [ ] Rax: register a Chrome Web Store developer account (USD 5), host `PRIVACY.md` publicly (repo is private), add screenshots, submit after the first live reading works.
 - [x] Extension now reports its failures (`{ email?, signedOut, error }`) to `POST /api/connector/claude`; the app shows the reason in the header and the Add account panel (`connector.error`, cleared by the next good reading) (2026-10-28).
-- [ ] First live Claude reading through the extension. Status 2026-10-28: Rax loaded it in **Edge** (first attempt the folder picker was not confirmed). Reports now reach the app, but are rejected with 400 (no email, or usage not in a known format). Diagnostics added: on rejection `connector.error` and `connector.rejectedShape` (field names and types only) show what claude.ai returned; waiting for the next report to fix the parsing. (verify `/api/organizations/{org}/usage` shape and that extension fetches carry the claude.ai cookies).
+- [x] First live Claude reading through the extension (2026-10-28, 20:48): Rax's account loaded in **Edge** became "Claude 1" with 5-hour 42% used and weekly 39% used, matching `five_hour` / `seven_day` with `utilization` and `resets_at`, and `/api/account` `email_address`. The app showed it in Next up and Active session. One earlier report was rejected (cause not captured); rejection diagnostics (`connector.error`, `connector.rejectedShape`, field names only) stay in place for the next time. (verify `/api/organizations/{org}/usage` shape and that extension fetches carry the claude.ai cookies).
 - [ ] Use it for 1 to 2 weeks and check calibration, lockout handling and suggestions against reality.
 - [ ] Later: package an installer (electron-builder) so it does not run from the source folder; optionally publish the extension.
 
@@ -56,7 +56,7 @@ type: project-hub
   Response: `userStatus.email`, `userTier.name`, per model `quotaInfo { resetTime, remainingFraction }`; missing fraction means 0.
   Quota groups: Flash models together (5-hour), Claude/GPT-OSS models together; a reset days away is a weekly lockout (seen: 2 days and 7 days).
 - Using Antigravity's Google OAuth from third-party tools led to many reported account suspensions (Google AI developer forum, 2026), so the app never signs in to Google.
-- Claude: community trackers read `claude.ai/api/organizations/{orgId}/usage` (`five_hour` / `seven_day` with `utilization` and `resets_at`) with the web session. Not yet verified live here.
+- **Claude (verified live 2026-10-28)**: `claude.ai/api/organizations/{orgId}/usage` returns `five_hour` / `seven_day` with `utilization` (percent) and `resets_at`; `/api/account` gives `email_address`. Extension fetches from Edge carry the claude.ai session.
 
 ## Known Limitations
 
