@@ -15,15 +15,31 @@
       <h1>AI Usage</h1>
       <p class="muted" id="feed-status">Loading...</p>
     </div>
-    <button type="button" class="btn btn-primary" id="add-claude" aria-expanded="false" aria-controls="connect">Add Claude account</button>
+    <button type="button" class="btn btn-primary" id="add-account" aria-expanded="false" aria-controls="connect">Add account</button>
   </header>
 
   <main>
     <section class="connect" id="connect" aria-labelledby="connect-title" hidden>
       <div class="connect-head">
-        <h2 id="connect-title">Connect Claude through your browser</h2>
+        <h2 id="connect-title">Add an account</h2>
         <button type="button" class="btn btn-ghost btn-small" id="connect-close">Done</button>
       </div>
+      <div class="provider-picker" role="radiogroup" aria-label="Which AI">
+        <button type="button" class="provider-option" role="radio" aria-checked="false" data-provider="claude">
+          <strong>Claude</strong><span class="muted-2">Pro or Max plan</span>
+        </button>
+        <button type="button" class="provider-option" role="radio" aria-checked="false" data-provider="antigravity">
+          <strong>Antigravity</strong><span class="muted-2">Google AI plan</span>
+        </button>
+      </div>
+
+      <div class="provider-steps" data-steps="antigravity" hidden>
+        <p>Open Antigravity on this computer and sign in with the account you want to add. It appears here within a minute, with no other setup.</p>
+        <p class="muted">To add more Antigravity accounts, sign in to each one in Antigravity once. Each stays tracked after you switch to another.</p>
+        <p class="connect-status" id="antigravity-status" role="status"></p>
+      </div>
+
+      <div class="provider-steps" data-steps="claude" hidden>
       <p class="muted">A small extension reads your usage with the claude.ai sign-in you already have in the browser, and sends it only to this app. Set it up once per browser profile.</p>
       <ol class="steps">
         <li>In Chrome or Edge, open <code>chrome://extensions</code> (Edge: <code>edge://extensions</code>) and turn on <strong>Developer mode</strong>.</li>
@@ -34,6 +50,7 @@
       </ol>
       <p class="muted">For another Claude account, load the extension in the browser profile that is signed in to it.</p>
       <p class="connect-status" id="connect-status" role="status"></p>
+      </div>
     </section>
 
     <section class="summary" id="summary" aria-label="Planner"></section>

@@ -114,13 +114,33 @@ function renderConnect(now) {
     ? `Connected. The extension last reported ${ago(now - reported)}${claude.length ? `; accounts: ${claude.map((a) => a.email ?? a.name).join(", ")}` : ""}.`
     : "Waiting for the extension. This updates on its own once it is loaded.";
   $("connect-status").classList.toggle("connect-ok", Boolean(reported));
+
+  const ag = state.antigravity;
+  const agAccounts = state.accounts.filter((a) => a.provider === "antigravity");
+  const current = agAccounts.find((a) => now - (state.seen[a.id] ?? 0) <= CURRENT_WITHIN_MS);
+  $("antigravity-status").textContent = ag.state === "ok" && current
+    ? `Antigravity is open and signed in as ${current.email}. Tracked accounts: ${agAccounts.length}.`
+    : ag.state === "not-running" ? "Antigravity is not open right now."
+    : "Checking Antigravity...";
+  $("antigravity-status").classList.toggle("connect-ok", ag.state === "ok" && Boolean(current));
 }
 
 function toggleConnect(open) {
   $("connect").hidden = !open;
-  $("add-claude").setAttribute("aria-expanded", String(open));
+  $("add-account").setAttribute("aria-expanded", String(open));
+  if (!open) selectProvider(null);
   clearTimeout(refreshTimer);
   load();
+}
+
+/** Shows the steps for one AI in the Add account panel, or none. */
+function selectProvider(provider) {
+  for (const option of document.querySelectorAll("[data-provider]")) {
+    option.setAttribute("aria-checked", String(option.dataset.provider === provider));
+  }
+  for (const steps of document.querySelectorAll("[data-steps]")) {
+    steps.hidden = steps.dataset.steps !== provider;
+  }
 }
 
 function tile(label, value, detail, tone = "") {
@@ -305,7 +325,7 @@ function renderBoard(views, now, spanStart, spanEnd) {
 
   const empty = views.length ? "" : `<div class="empty">
       <h3>No accounts yet</h3>
-      <p class="muted">Use <strong>Add Claude account</strong> to connect Claude through your browser. Antigravity accounts appear on their own while Antigravity is open.</p>
+      <p class="muted">Use <strong>Add account</strong> to add Claude or Antigravity.</p>
     </div>`;
 
   const focusKey = focusSelector(document.activeElement);
@@ -382,10 +402,13 @@ async function finishRename(id, save) {
 
 // ---------- events ----------
 
-$("add-claude").addEventListener("click", () => toggleConnect($("connect").hidden));
+$("add-account").addEventListener("click", () => toggleConnect($("connect").hidden));
+for (const option of document.querySelectorAll("[data-provider]")) {
+  option.addEventListener("click", () => selectProvider(option.dataset.provider));
+}
 $("connect-close").addEventListener("click", () => {
   toggleConnect(false);
-  $("add-claude").focus();
+  $("add-account").focus();
 });
 $("copy-dir").addEventListener("click", async () => {
   try {
