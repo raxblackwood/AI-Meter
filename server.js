@@ -5,9 +5,12 @@ import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { dirname, extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { ACCOUNT_IDS, ACCOUNTS } from "./public/accounts.js";
+import { ACCOUNT_IDS, ACCOUNTS, ANTIGRAVITY_IDS } from "./public/accounts.js";
 import { DAY } from "./public/model.js";
-import { readEntries, readFeed, writeEntries } from "./src/store.js";
+import { createAntigravityCollector } from "./src/antigravity.js";
+import {
+  linkEmail, readAntigravityFeed, readEntries, readFeed, readLinks, recordAntigravity, writeEntries, writeLinks,
+} from "./src/store.js";
 
 const PUBLIC_DIR = join(dirname(fileURLToPath(import.meta.url)), "public");
 const MAX_BODY_BYTES = 16 * 1024;
@@ -67,18 +70,44 @@ export function parseEntry(body, now) {
   return { id, accountId: body.accountId, at, session: { usedPct, resetsAt }, weekly: null, source: "manual" };
 }
 
-async function handleApi(req, res, url) {
+/**
+ * Links an Antigravity email to an account, or unlinks it with accountId null.
+ * If the account already has another email, that email takes this one's old account (a swap).
+ */
+export function relink(links, email, accountId, knownEmails) {
+  if (!knownEmails.includes(email)) throw new HttpError(404, "Unknown email");
+  if (accountId !== null && !ANTIGRAVITY_IDS.includes(accountId)) throw new HttpError(400, "Not an Antigravity account");
+  const next = { ...links };
+  const previous = next[email];
+  const holder = Object.keys(next).find((e) => e !== email && next[e] === accountId);
+  next[email] = accountId;
+  if (holder) next[holder] = previous ?? null;
+  return next;
+}
+
+async function handleApi(req, res, url, collector) {
   const now = Date.now();
   if (req.method === "GET" && url.pathname === "/api/state") {
     const feed = readFeed();
+    const ag = readAntigravityFeed();
     const entries = readEntries();
     return sendJson(res, 200, {
       now,
       accounts: ACCOUNTS,
-      snapshots: [...feed.snapshots, ...entries],
+      snapshots: [...feed.snapshots, ...ag.snapshots, ...entries],
       entries: [...entries].sort((a, b) => b.at - a.at),
       feedSeenAt: feed.seenAt,
+      antigravity: { detected: ag.detected, collector: collector?.status ?? null },
     });
+  }
+  if (req.method === "PUT" && url.pathname === "/api/links") {
+    const body = await readBody(req);
+    const email = typeof body?.email === "string" ? body.email.toLowerCase() : "";
+    const accountId = body?.accountId ?? null;
+    const known = readAntigravityFeed().detected.map((d) => d.email);
+    const links = relink(readLinks(), email, accountId, known);
+    writeLinks(links);
+    return sendJson(res, 200, links);
   }
   if (req.method === "POST" && url.pathname === "/api/entries") {
     const entry = parseEntry(await readBody(req), now);
@@ -112,11 +141,11 @@ async function serveStatic(res, url) {
   res.end(body);
 }
 
-export function createApp() {
+export function createApp({ collector = null } = {}) {
   return createServer(async (req, res) => {
     const url = new URL(req.url, "http://localhost");
     try {
-      if (url.pathname.startsWith("/api/")) await handleApi(req, res, url);
+      if (url.pathname.startsWith("/api/")) await handleApi(req, res, url, collector);
       else if (req.method === "GET") await serveStatic(res, url);
       else throw new HttpError(405, "Method not allowed");
     } catch (err) {
@@ -129,7 +158,14 @@ export function createApp() {
 
 if (import.meta.main) {
   const port = Number(process.env.PORT) || 4317;
-  createApp().listen(port, "127.0.0.1", () => {
+  const collector = createAntigravityCollector({
+    onReading(reading) {
+      linkEmail(reading.email, ANTIGRAVITY_IDS);
+      recordAntigravity(reading);
+    },
+  });
+  if (process.env.AI_USAGE_ANTIGRAVITY !== "off") collector.start();
+  createApp({ collector }).listen(port, "127.0.0.1", () => {
     console.log(`AI Usage Dashboard on http://localhost:${port}`);
   });
 }

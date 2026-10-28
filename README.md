@@ -31,9 +31,23 @@ Add this to `~/.claude/settings.json`:
 The feed works whether or not the dashboard server is running.
 Usage from claude.ai chat shares the same pool but only shows up the next time Claude Code refreshes its status line.
 
-## Logging Antigravity
+## Reading Antigravity automatically
 
-Antigravity has no usage API, so use the Quick log form.
+While the dashboard server runs, it reads Antigravity's quota once a minute from Antigravity's own local language server, the same source as the IDE quota page.
+It finds the `language_server` process, takes its CSRF token from the process arguments, looks up the localhost ports it listens on, and calls `GetUserStatus`.
+The token is only kept in memory.
+This is not a public API, so it may break when Antigravity updates; the Quick log form stays available as a fallback.
+Set `AI_USAGE_ANTIGRAVITY=off` to turn it off.
+
+- Only the account signed in to Antigravity is reported.
+  Each new email is linked to the next free Antigravity row, and **Antigravity logins** under Quick log lets you move it to another row.
+- Claude, GPT-OSS and other non-Flash models are the main bar; Flash models have their own quota and show as a thin second bar.
+- A reset more than about 5 hours away is shown as a weekly lockout ("Weekly limit hit, unlocks ...").
+- A missing `remainingFraction` is read as 0% left, because the response leaves out zero values.
+
+## Logging by hand
+
+Use the Quick log form for any account the app cannot read.
 Copy the used percentage and the "refreshes in" time from the quota page.
 Deleted entries can be restored with Undo for a few seconds.
 
@@ -54,6 +68,9 @@ Deleted entries can be restored with Undo for a few seconds.
 | `data/claude-feed.jsonl` | `statusline.js` | One line per change in Claude Code's limits |
 | `data/claude-latest.json` | `statusline.js` | Last reading and when it was last seen |
 | `data/manual-entries.json` | `server.js` | Quick log entries |
+| `data/antigravity-feed.jsonl` | `server.js` | One line per change in an Antigravity account's quota, keyed by email |
+| `data/antigravity-latest.json` | `server.js` | Last reading per email and when it was seen |
+| `data/account-links.json` | `server.js` | Which row each Antigravity email fills |
 
 ## Test
 

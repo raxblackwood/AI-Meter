@@ -73,6 +73,16 @@ test("invalid entries are rejected", async () => {
   assert.equal((await call("POST", "/api/entries", { accountId: "ag1", usedPct: 5, resetsAt: Date.now() - 1 })).status, 400);
 });
 
+test("relinking an Antigravity email swaps with the account's current email", async () => {
+  const { relink } = await import("../server.js");
+  const known = ["a@x.com", "b@x.com", "c@x.com"];
+  assert.deepEqual(relink({ "a@x.com": "ag1", "b@x.com": "ag2" }, "a@x.com", "ag2", known), { "a@x.com": "ag2", "b@x.com": "ag1" });
+  assert.deepEqual(relink({ "a@x.com": "ag1" }, "c@x.com", "ag1", known), { "a@x.com": null, "c@x.com": "ag1" });
+  assert.deepEqual(relink({ "a@x.com": "ag1" }, "a@x.com", null, known), { "a@x.com": null });
+  assert.throws(() => relink({}, "z@x.com", "ag1", known), /Unknown email/);
+  assert.throws(() => relink({}, "a@x.com", "claude", known), /Not an Antigravity account/);
+});
+
 test("static files are served and path traversal is refused", async () => {
   const res = await fetch(`${base}/`);
   assert.equal(res.status, 200);

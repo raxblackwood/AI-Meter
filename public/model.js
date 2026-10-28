@@ -124,11 +124,16 @@ export function accountView(account, allSnapshots, now, spanStart, spanEnd) {
 
   const lastWeekly = [...snapshots].reverse().find((s) => s.weekly);
   let weekly = null;
-  if (lastWeekly) {
-    weekly = lastWeekly.weekly.resetsAt > now
-      ? { usedPct: lastWeekly.weekly.usedPct, resetsAt: lastWeekly.weekly.resetsAt, seenAt: lastWeekly.at }
-      : { usedPct: 0, resetsAt: null, seenAt: lastWeekly.at };
+  if (lastWeekly?.weekly.resetsAt > now) {
+    weekly = { usedPct: lastWeekly.weekly.usedPct, resetsAt: lastWeekly.weekly.resetsAt, seenAt: lastWeekly.at };
+  } else if (lastWeekly && anchored) {
+    // Claude always reports a weekly window, so a passed reset means a new week has begun.
+    weekly = { usedPct: 0, resetsAt: null, seenAt: lastWeekly.at };
   }
+
+  // Antigravity Flash models have their own quota; shown as a secondary bar only.
+  const lastFlash = [...snapshots].reverse().find((s) => s.source === "antigravity")?.flash;
+  const flash = lastFlash && lastFlash.resetsAt > now ? lastFlash : null;
   const exhausted = Boolean(weekly && weekly.usedPct >= 100);
 
   const calibration = calibrate(snapshots);
@@ -146,7 +151,7 @@ export function accountView(account, allSnapshots, now, spanStart, spanEnd) {
     }));
   windows.push(...planWindows({ session, weekly, exhausted, calibration, sessionsLeft, now, spanEnd }));
 
-  return { account, session, weekly, exhausted, calibration, sessionsLeft, windows, lastSeenAt: snapshots.at(-1)?.at ?? null };
+  return { account, session, weekly, exhausted, flash, calibration, sessionsLeft, windows, lastSeenAt: snapshots.at(-1)?.at ?? null };
 }
 
 /**

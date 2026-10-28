@@ -63,14 +63,40 @@ function render() {
   renderSummary(summary, now);
   renderBoard(views, now, spanStart, spanEnd);
   renderEntries(now);
+  renderLinks(now);
+}
+
+function renderLinks(now) {
+  const detected = state.antigravity?.detected ?? [];
+  $("links").hidden = !detected.length;
+  if (!detected.length) return;
+  const options = state.accounts.filter((a) => a.feed === "antigravity");
+  $("links-list").innerHTML = detected.map((d) => `<li>
+      <span><strong>${esc(d.email)}</strong> <span class="muted-2">seen ${ago(now - d.seenAt)}</span></span>
+      <select data-link-email="${esc(d.email)}" aria-label="Account for ${esc(d.email)}">
+        ${options.map((a) => `<option value="${esc(a.id)}" ${a.id === d.accountId ? "selected" : ""}>${esc(a.name)}</option>`).join("")}
+        <option value="" ${d.accountId ? "" : "selected"}>Not linked</option>
+      </select>
+    </li>`).join("");
 }
 
 function renderFeedStatus(now) {
   const seen = state.feedSeenAt;
-  $("feed-status").textContent = seen
+  const claude = seen
     ? `Claude Code feed seen ${ago(now - seen)}`
     : "Claude Code feed not connected yet. Set statusline.js as your status line.";
+  const collector = state.antigravity?.collector;
+  const current = state.antigravity?.detected.find((d) => d.seenAt >= (collector?.checkedAt ?? Infinity) - MINUTE);
+  const antigravity = !collector ? "Antigravity reading is off"
+    : collector.state === "ok" && current ? `Antigravity: reading ${current.email}`
+    : collector.state === "not-running" ? "Antigravity is not running"
+    : collector.state === "error" ? `Antigravity unreadable: ${collector.error}`
+    : "Antigravity: checking";
+  $("feed-status").textContent = `${claude} · ${antigravity}`;
 }
+
+/** The detected Antigravity login linked to an account, if any. */
+const linkedLogin = (accountId) => state.antigravity?.detected.find((d) => d.accountId === accountId) ?? null;
 
 function tile(label, value, detail, tone = "") {
   return `<article class="tile ${tone}">
@@ -127,22 +153,32 @@ function accountMeta(v, now) {
   const lines = [];
   if (v.session.state === "open") {
     lines.push(`<span class="num">${pct(100 - v.session.usedPct)}</span> left, resets ${when(v.session.resetsAt, now)}`);
-  } else {
+  } else if (!v.exhausted) {
     lines.push("No open window, ready to start");
   }
-  if (v.weekly) {
+  const login = linkedLogin(v.account.id);
+  if (v.exhausted) {
+    lines.push(`<span class="text-danger">Weekly limit hit</span>, unlocks ${when(v.weekly.resetsAt, now)}`);
+  } else if (v.weekly) {
     lines.push(v.weekly.resetsAt
       ? `Week <span class="num">${pct(v.weekly.usedPct)}</span> used, resets ${when(v.weekly.resetsAt, now)}`
       : "Week reset, waiting for new data");
+  } else if (login) {
+    lines.push(`<span class="muted-2">No weekly lock</span>`);
   } else {
     lines.push(`<span class="muted-2">Weekly cap not tracked</span>`);
+  }
+  if (v.flash) {
+    lines.push(`Flash <span class="num">${pct(100 - v.flash.usedPct)}</span> left, resets ${when(v.flash.resetsAt, now)}`);
   }
   if (v.sessionsLeft !== null) {
     lines.push(`<span class="num">${sessions(v.sessionsLeft)}</span> sessions left this week`);
   } else if (v.account.feed === "statusline") {
     lines.push(`<span class="muted-2">Calibrating (${pct(v.calibration.observedSessionPct)} of 50% observed)</span>`);
   }
-  if (v.lastSeenAt && v.account.feed === "manual") {
+  if (login) {
+    lines.push(`<span class="muted-2">Read ${ago(now - login.seenAt)}</span>`);
+  } else if (v.lastSeenAt && v.account.feed !== "statusline") {
     lines.push(`<span class="muted-2">Logged ${ago(now - v.lastSeenAt)}</span>`);
   }
   return lines.map((l) => `<span>${l}</span>`).join("");
@@ -194,18 +230,30 @@ function renderBoard(views, now, spanStart, spanEnd) {
     const weekly = v.weekly?.resetsAt && v.weekly.resetsAt < spanEnd
       ? `<span class="weekly-mark" style="left:${x(v.weekly.resetsAt)}%" title="Weekly reset ${esc(when(v.weekly.resetsAt, now))}"></span>`
       : "";
-    const remaining = v.session.state === "open" ? 100 - v.session.usedPct : 100;
+    const remaining = v.exhausted ? 0 : v.session.state === "open" ? 100 - v.session.usedPct : 100;
     const meterTone = v.exhausted || remaining <= 5 ? "meter-empty" : remaining <= 25 ? "meter-low" : "";
-    const logButton = v.account.feed === "manual"
-      ? `<button type="button" class="btn btn-ghost btn-small" data-log="${esc(v.account.id)}" aria-label="Log ${esc(v.account.name)}">Log</button>`
-      : `<span class="badge" title="Updated by the Claude Code status line">Auto</span>`;
+    const login = linkedLogin(v.account.id);
+    const autoBadge = v.account.feed === "statusline"
+      ? `<span class="badge" title="Updated by the Claude Code status line">Auto</span>`
+      : login ? `<span class="badge" title="Read from Antigravity while ${esc(login.email)} is signed in">Auto</span>` : "";
+    const logButton = v.account.feed === "statusline" ? ""
+      : `<button type="button" class="btn btn-ghost btn-small" data-log="${esc(v.account.id)}" aria-label="Log ${esc(v.account.name)}">Log</button>`;
+    const subtitle = login ? login.email : v.account.plan;
+    const flashBar = v.flash
+      ? `<div class="meter meter-thin" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(100 - v.flash.usedPct)}" aria-label="${esc(v.account.name)} Flash left">
+          <span style="width:${100 - v.flash.usedPct}%"></span>
+        </div>`
+      : "";
     return `<div class="row-head">
         <div class="row-title">
-          <div><h3>${esc(v.account.name)}</h3><span class="muted-2">${esc(v.account.plan)}</span></div>
-          ${logButton}
+          <div class="row-name"><h3>${esc(v.account.name)}</h3><span class="muted-2" title="${esc(subtitle)}">${esc(subtitle)}</span></div>
+          <div class="row-actions">${autoBadge}${logButton}</div>
         </div>
-        <div class="meter ${meterTone}" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(remaining)}" aria-label="${esc(v.account.name)} session left">
-          <span style="width:${remaining}%"></span>
+        <div class="meters">
+          <div class="meter ${meterTone}" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(remaining)}" aria-label="${esc(v.account.name)} session left">
+            <span style="width:${remaining}%"></span>
+          </div>
+          ${flashBar}
         </div>
         <div class="row-meta">${accountMeta(v, now)}</div>
       </div>
@@ -258,7 +306,9 @@ function populateAccounts() {
     const opt = new Option(a.name, a.id);
     select.add(opt);
   }
-  select.value = state.accounts.find((a) => a.feed === "manual")?.id ?? state.accounts[0].id;
+  // Default to the first account the app cannot read on its own.
+  const unread = state.accounts.find((a) => a.feed !== "statusline" && !linkedLogin(a.id));
+  select.value = (unread ?? state.accounts.find((a) => a.feed !== "statusline") ?? state.accounts[0]).id;
 }
 
 function showToast(text, undo) {
@@ -332,6 +382,23 @@ document.addEventListener("click", async (event) => {
     } catch (err) {
       showToast(err.message, null);
     }
+  }
+});
+
+document.addEventListener("change", async (event) => {
+  const select = event.target.closest("[data-link-email]");
+  if (!select) return;
+  const email = select.dataset.linkEmail;
+  const previous = state.antigravity.detected.find((d) => d.email === email)?.accountId ?? null;
+  const setLink = (accountId) => api("PUT", "/api/links", { email, accountId });
+  try {
+    await setLink(select.value || null);
+    await load();
+    const text = select.value ? `Linked ${email} to ${select.selectedOptions[0].text}.` : `Unlinked ${email}.`;
+    showToast(text, async () => setLink(previous));
+  } catch (err) {
+    showToast(err.message, null);
+    await load();
   }
 });
 
