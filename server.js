@@ -2,6 +2,7 @@
 // Local-only HTTP server: serves the dashboard and a small JSON API over the data files, and receives
 // Claude readings from the browser extension. The desktop app (app/main.js) runs it; `npm start` runs it
 // without the tray.
+import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { dirname, extname, join, normalize, sep } from "node:path";
@@ -13,6 +14,8 @@ const ROOT = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(ROOT, "public");
 const EXTENSION_DIR = join(ROOT, "extension");
 const CONNECTOR_PATH = "/api/connector/claude";
+// Set in package.json once the extension is published, so Add account can offer a one-click install.
+const STORE_URL = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")).config?.chromeWebStoreUrl || null;
 // Extension reports carry the claude.ai account and usage objects, which are a few kilobytes.
 const MAX_BODY_BYTES = 256 * 1024;
 const MAX_NAME_LENGTH = 40;
@@ -84,7 +87,7 @@ async function handleApi(req, res, url, hub) {
       seen: readSeen(),
       status: hub.status,
       antigravity: hub.antigravity,
-      connector: { ...hub.connector, extensionDir: EXTENSION_DIR },
+      connector: { ...hub.connector, extensionDir: EXTENSION_DIR, storeUrl: STORE_URL },
     });
   }
   if (req.method === "POST" && url.pathname === CONNECTOR_PATH) {

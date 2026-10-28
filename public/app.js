@@ -108,6 +108,15 @@ function renderHeader(now) {
 
 function renderConnect(now) {
   $("extension-dir").textContent = state.connector.extensionDir;
+  // Once the extension is published, the store is the main way in and the folder steps are a fallback.
+  const storeUrl = state.connector.storeUrl;
+  $("store-install").hidden = !storeUrl;
+  if (storeUrl) $("store-link").href = storeUrl;
+  $("manual-summary").textContent = storeUrl ? "Or install from folder" : "Install from folder";
+  if (!storeUrl && !$("manual-install").dataset.initialized) {
+    $("manual-install").open = true;
+    $("manual-install").dataset.initialized = "1";
+  }
   const reported = state.connector.claudeSeenAt;
   const claude = state.accounts.filter((a) => a.provider === "claude");
   $("connect-status").textContent = reported

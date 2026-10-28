@@ -40,16 +40,25 @@
       </div>
 
       <div class="provider-steps" data-steps="claude" hidden>
-      <p class="muted">A small extension reads your usage with the claude.ai sign-in you already have in the browser, and sends it only to this app. Set it up once per browser profile.</p>
-      <ol class="steps">
-        <li>In Chrome or Edge, open <code>chrome://extensions</code> (Edge: <code>edge://extensions</code>) and turn on <strong>Developer mode</strong>.</li>
-        <li>Click <strong>Load unpacked</strong> and choose this folder:
-          <span class="path-row"><code id="extension-dir"></code><button type="button" class="btn btn-ghost btn-small" id="copy-dir">Copy</button></span>
-        </li>
-        <li>Make sure you are signed in at <a href="https://claude.ai" target="_blank" rel="noopener">claude.ai</a> in that browser. The account appears here within a minute.</li>
-      </ol>
-      <p class="muted">For another Claude account, load the extension in the browser profile that is signed in to it.</p>
-      <p class="connect-status" id="connect-status" role="status"></p>
+        <p class="muted">A small browser extension reads your usage with the claude.ai sign-in you already have, and sends it only to this app. Set it up once per browser profile.</p>
+        <div class="store-install" id="store-install" hidden>
+          <ol class="steps">
+            <li><a class="btn btn-primary btn-small" id="store-link" target="_blank" rel="noopener">Install from Chrome Web Store</a></li>
+            <li>Make sure you are signed in at <a href="https://claude.ai" target="_blank" rel="noopener">claude.ai</a> in that browser. The account appears here within a minute.</li>
+          </ol>
+        </div>
+        <details class="manual-install" id="manual-install">
+          <summary id="manual-summary">Install from folder</summary>
+          <ol class="steps">
+            <li>In Chrome or Edge, open <code>chrome://extensions</code> (Edge: <code>edge://extensions</code>) and turn on <strong>Developer mode</strong>.</li>
+            <li>Click <strong>Load unpacked</strong> and choose this folder:
+              <span class="path-row"><code id="extension-dir"></code><button type="button" class="btn btn-ghost btn-small" id="copy-dir">Copy</button></span>
+            </li>
+            <li>Make sure you are signed in at <a href="https://claude.ai" target="_blank" rel="noopener">claude.ai</a> in that browser. The account appears here within a minute.</li>
+          </ol>
+        </details>
+        <p class="muted">For another Claude account, add the extension in the browser profile that is signed in to it.</p>
+        <p class="connect-status" id="connect-status" role="status"></p>
       </div>
     </section>
 

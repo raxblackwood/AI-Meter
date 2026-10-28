@@ -66,6 +66,7 @@ test("a report from the browser extension creates the Claude account and records
   assert.equal(state.status[account.id].state, "ok");
   assert.ok(state.connector.claudeSeenAt);
   assert.match(state.connector.extensionDir, /extension$/);
+  assert.equal(state.connector.storeUrl, null, "no store link until the extension is published");
   assert.equal(state.snapshots.find((s) => s.accountId === account.id).session.usedPct, 30);
 
   // The same email reports again: same account, new reading.

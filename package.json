@@ -12,9 +12,13 @@
   "scripts": {
     "app": "electron .",
     "start": "node server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "pack-extension": "node scripts/pack-extension.mjs"
   },
   "devDependencies": {
     "electron": "^45.1.0"
+  },
+  "config": {
+    "chromeWebStoreUrl": ""
   }
 }

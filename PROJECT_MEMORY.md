@@ -40,7 +40,9 @@ type: project-hub
 - [x] v0.2: Electron tray app, dynamic accounts (rename, remove, restore), Claude via browser extension, migration of v1 data (2026-10-28).
 - [x] In-app Claude sign-in window tried and dropped: Google sign-in there needed his password again.
 - [x] Single "Add account" button with an AI picker (Claude: extension steps; Antigravity: sign in once in Antigravity), per Rax's feedback (2026-10-28).
-- [ ] Decide with Rax how Claude connects for other people: publish the extension on the Chrome Web Store (recommended) or bring back an in-app sign-in window. Opening the claude.ai login in the browser and receiving a sign-in is not possible: Anthropic restricts Pro/Max OAuth to Claude Code and claude.ai (Feb 2026), and Google suspends accounts that reuse Antigravity's sign-in.
+- [x] Decided with Rax (2026-10-28): keep the browser extension and publish it on the Chrome Web Store. A browser OAuth login is not possible: Anthropic restricts Pro/Max OAuth to Claude Code and claude.ai (Feb 2026), and Google suspends accounts that reuse Antigravity's sign-in.
+- [x] Store prep: `npm run pack-extension` (zip in `dist/`), `PRIVACY.md`, `docs/chrome-web-store.md` (listing, permission justifications, data disclosures), `config.chromeWebStoreUrl` in package.json switches Add account > Claude to an install button.
+- [ ] Rax: register a Chrome Web Store developer account (USD 5), host `PRIVACY.md` publicly (repo is private), add screenshots, submit after the first live reading works.
 - [ ] First live Claude reading through the extension (verify `/api/organizations/{org}/usage` shape and that extension fetches carry the claude.ai cookies).
 - [ ] Use it for 1 to 2 weeks and check calibration, lockout handling and suggestions against reality.
 - [ ] Later: package an installer (electron-builder) so it does not run from the source folder; optionally publish the extension.

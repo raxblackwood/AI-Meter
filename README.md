@@ -33,6 +33,10 @@ To connect, click **Add Claude account** in the app, or:
 Each browser profile reports the Claude account it is signed in to, so for more Claude accounts, load the extension in each profile.
 Readings arrive while that browser is open.
 
+The extension is being prepared for the Chrome Web Store so other people can install it in one click; see [docs/chrome-web-store.md](docs/chrome-web-store.md) and [PRIVACY.md](PRIVACY.md).
+`npm run pack-extension` builds the upload zip in `dist/`.
+Once published, put the store link in `package.json` under `config.chromeWebStoreUrl` and Add account > Claude shows an install button.
+
 ## Antigravity accounts: automatic
 
 While Antigravity is open, the app reads its quota once a minute from Antigravity's own local language server, the same source as the IDE quota page.
