@@ -46,8 +46,10 @@ async function readUsage() {
   } catch (err) {
     status.error = err.message;
     status.signedOut = Boolean(err.signedOut);
-    // Tell the dashboard the account it knew about is signed out, so its row can say so.
-    if (err.signedOut && lastEmail) await send({ email: lastEmail, signedOut: true }).catch(() => {});
+    // Tell the dashboard what went wrong, so it can show it (and mark a known account signed out).
+    if (!err.message.startsWith("Dashboard")) {
+      await send({ email: lastEmail, signedOut: status.signedOut, error: err.message }).catch(() => {});
+    }
   }
   await chrome.storage.local.set({ status });
   return status;

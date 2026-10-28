@@ -82,6 +82,13 @@ test("a signed-out report marks that account signed out", async () => {
   assert.equal(state.status[state.accounts[0].id].state, "signed-out");
 });
 
+test("an extension error is shown until the next good reading", async () => {
+  await call("POST", "/api/connector/claude", { email: null, signedOut: false, error: "claude.ai returned 403" }, { origin: EXTENSION });
+  assert.equal((await call("GET", "/api/state")).body.connector.error, "claude.ai returned 403");
+  await call("POST", "/api/connector/claude", report("me@example.com", 50), { origin: EXTENSION });
+  assert.equal((await call("GET", "/api/state")).body.connector.error, null);
+});
+
 test("extension reports without an email or limits are rejected", async () => {
   assert.equal((await call("POST", "/api/connector/claude", { usage: {} }, { origin: EXTENSION })).status, 400);
   assert.equal((await call("POST", "/api/connector/claude", { account: { email_address: "a@b.co" }, usage: {} }, { origin: EXTENSION })).status, 400);

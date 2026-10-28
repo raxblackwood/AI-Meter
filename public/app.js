@@ -93,6 +93,7 @@ function renderHeader(now) {
   if (claude.length || reported) {
     const problems = claude.filter((a) => state.status[a.id]?.state === "signed-out").length;
     parts.push(problems ? `Claude: ${problems} of ${claude.length} signed out`
+      : state.connector.error ? `Claude: the browser extension could not read claude.ai (${state.connector.error})`
       : reported ? `Claude: browser reported ${ago(now - reported)}`
       : "Claude: waiting for the browser extension (is the browser open?)");
   }
@@ -119,10 +120,11 @@ function renderConnect(now) {
   }
   const reported = state.connector.claudeSeenAt;
   const claude = state.accounts.filter((a) => a.provider === "claude");
-  $("connect-status").textContent = reported
-    ? `Connected. The extension last reported ${ago(now - reported)}${claude.length ? `; accounts: ${claude.map((a) => a.email ?? a.name).join(", ")}` : ""}.`
-    : "Waiting for the extension. This updates on its own once it is loaded.";
-  $("connect-status").classList.toggle("connect-ok", Boolean(reported));
+  const error = state.connector.error;
+  $("connect-status").textContent = !reported ? "Waiting for the extension. This updates on its own once it is loaded."
+    : error ? `The extension is installed but could not read claude.ai: ${error}`
+    : `Connected. The extension last reported ${ago(now - reported)}${claude.length ? `; accounts: ${claude.map((a) => a.email ?? a.name).join(", ")}` : ""}.`;
+  $("connect-status").classList.toggle("connect-ok", Boolean(reported) && !error);
 
   const ag = state.antigravity;
   const agAccounts = state.accounts.filter((a) => a.provider === "antigravity");
