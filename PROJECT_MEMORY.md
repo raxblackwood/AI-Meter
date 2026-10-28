@@ -22,7 +22,7 @@ type: project-hub
 
 - **Milestone**: v1.1, automatic Antigravity reading, built and verified live against the running Antigravity IDE.
   The signed-in account auto-linked to Antigravity 1 and showed its real weekly lockout and Flash quota.
-  Claude Code is still not feeding, because the status line is not wired into `~/.claude/settings.json` yet.
+  The Claude Code status line is wired in `~/.claude/settings.json`; it feeds from terminal `claude` sessions, not from the desktop app.
 - **Run**: `npm start`, then open http://localhost:4317.
 - **Tests**: `npm test`, 22 passing (model, Antigravity collector and parsing, status line feeder, API, static serving).
 
@@ -32,7 +32,8 @@ type: project-hub
 - [x] Verify what Claude Code exposes: the status line JSON includes `rate_limits.five_hour` and `rate_limits.seven_day` with `used_percentage` and `resets_at` (epoch seconds), confirmed in Claude Code 2.1.302.
 - [x] v1: local server, status line feeder, quick log, weekly map, planner strip, undo for entries.
 - [x] v1.1: Antigravity collector reading the local language server every minute, readings stored by email, auto-linking to rows, relink with undo, Flash secondary bar, weekly lockout display (2026-10-28).
-- [ ] Wire `statusline.js` into `~/.claude/settings.json` (needs Rax's OK, it is a global setting).
+- [x] Wire `statusline.js` into `~/.claude/settings.json` (approved by Rax, done 2026-10-28: `"statusLine": { "type": "command", "command": "node \"E:/CODES/ai-usage-dashboard/statusline.js\"" }`).
+- [ ] Confirm the first real Claude reading lands in `data/claude-feed.jsonl` from a terminal `claude` session (the desktop app Code tab did not run the status line).
 - [ ] Sign in to Antigravity accounts 2 and 3 once each so they get linked.
 - [ ] Use it for 1 to 2 weeks and check the calibration, lockout handling and suggestions against reality.
 - [ ] v2 candidates: start the server automatically at login; optional Claude fallback via `/api/oauth/usage` when Claude Code is closed.
@@ -65,6 +66,6 @@ type: project-hub
 
 ## Next Steps
 
-1. Get approval and add the `statusLine` entry to `~/.claude/settings.json`.
+1. Send one message in a terminal `claude` session and confirm the Claude row starts updating.
 2. Sign in to each Antigravity account once with the dashboard running, and check the rows are linked correctly.
 3. Compare the dashboard with the IDE quota page after a window resets, to confirm the 0% reading and the lockout detection.
