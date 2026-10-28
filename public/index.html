@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>AI Usage</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='1' y='9' width='3' height='6' rx='1' fill='%236366f1'/%3E%3Crect x='6.5' y='5' width='3' height='10' rx='1' fill='%236366f1'/%3E%3Crect x='12' y='1' width='3' height='14' rx='1' fill='%236366f1'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <header class="top">
+    <div>
+      <h1>AI Usage</h1>
+      <p class="muted" id="feed-status">Loading...</p>
+    </div>
+  </header>
+
+  <main>
+    <section class="summary" id="summary" aria-label="Planner"></section>
+
+    <section class="board" aria-label="Weekly map">
+      <div class="board-scroll">
+        <div class="board-grid" id="board"></div>
+      </div>
+      <ul class="legend" aria-label="Legend">
+        <li><span class="swatch swatch-current"></span>Current window, fill is what is left</li>
+        <li><span class="swatch swatch-past"></span>Past window, fill is what went unused</li>
+        <li><span class="swatch swatch-planned"></span>Possible next window</li>
+        <li><span class="swatch swatch-over"></span>Beyond the weekly budget</li>
+        <li><span class="swatch swatch-weekly"></span>Weekly reset</li>
+      </ul>
+    </section>
+
+    <section class="log" aria-labelledby="log-title">
+      <div class="log-form-wrap">
+        <h2 id="log-title">Quick log</h2>
+        <p class="muted">Copy the numbers from the quota page. Claude Code updates on its own through the status line.</p>
+        <form id="log-form" class="log-form" novalidate>
+          <label>Account
+            <select name="accountId" id="log-account"></select>
+          </label>
+          <label>Used
+            <span class="input-suffix"><input name="usedPct" id="log-used" type="number" inputmode="decimal" min="0" max="100" step="1" required><span>%</span></span>
+          </label>
+          <fieldset>
+            <legend>Refreshes in</legend>
+            <span class="input-suffix"><input name="hours" type="number" inputmode="numeric" min="0" max="168" step="1" placeholder="0" aria-label="Hours"><span>h</span></span>
+            <span class="input-suffix"><input name="minutes" type="number" inputmode="numeric" min="0" max="59" step="1" placeholder="0" aria-label="Minutes"><span>m</span></span>
+          </fieldset>
+          <button type="submit" class="btn btn-primary">Log</button>
+        </form>
+        <p class="form-error" id="log-error" role="alert"></p>
+      </div>
+      <div class="entries-wrap">
+        <h2>Recent entries</h2>
+        <ul class="entries" id="entries"></ul>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden>
+    <span id="toast-text"></span>
+    <button type="button" class="btn btn-ghost" id="toast-undo">Undo</button>
+  </div>
+</body>
+</html>
