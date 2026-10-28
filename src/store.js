@@ -1,5 +1,5 @@
 // File-backed storage, written only by the process that runs the collectors (the desktop app or server.js):
-//   accounts.json   the account list: { id, provider, name, email, createdAt, removedAt? }
+//   accounts.json   the account list: { id, provider, name, email, createdAt, removedAt?, partition?, orgId? }
 //   readings.jsonl  append-only, one line per change in an account's limits
 //   latest.json     last reading per account and when it was last seen (dedupe and freshness)
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
@@ -76,10 +76,15 @@ function nextName(accounts, provider) {
   }
 }
 
-export function createAccount({ provider, email = null, name = null }, dir = dataDir()) {
+/**
+ * `partition` and `orgId` are set only for Claude accounts signed in inside the desktop app:
+ * the Electron session that holds the sign-in, and the organization to read usage for.
+ */
+export function createAccount({ provider, email = null, name = null, partition = null, orgId = null }, dir = dataDir()) {
   if (!PROVIDERS[provider]) throw new Error(`Unknown provider ${provider}`);
   const accounts = readAccounts(dir);
   const account = { id: randomUUID(), provider, name: name || nextName(accounts, provider), email, createdAt: Date.now() };
+  if (partition) Object.assign(account, { partition, orgId });
   writeAccounts([...accounts, account], dir);
   return account;
 }

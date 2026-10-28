@@ -40,7 +40,15 @@
       </div>
 
       <div class="provider-steps" data-steps="claude" hidden>
-        <p class="muted">A small browser extension reads your usage with the claude.ai sign-in you already have, and sends it only to this app. Set it up once per browser profile.</p>
+        <div class="method" id="method-app">
+          <h3>Sign in here</h3>
+          <p class="muted">Opens a claude.ai sign-in window in this app. Use your email (Claude sends a code) or Google, which asks for your password once. Repeat for each account.</p>
+          <div><button type="button" class="btn btn-primary btn-small" id="sign-in-claude">Sign in to Claude</button></div>
+          <p class="connect-status" id="sign-in-status" role="status" hidden></p>
+        </div>
+        <div class="method">
+          <h3>Or use your browser</h3>
+          <p class="muted">A small browser extension reads your usage with the claude.ai sign-in you already have, so there is no password to enter, and sends it only to this app. Set it up once per browser profile.</p>
         <div class="store-install" id="store-install" hidden>
           <ol class="steps">
             <li><a class="btn btn-primary btn-small" id="store-link" target="_blank" rel="noopener">Install from Chrome Web Store</a></li>
@@ -59,6 +67,7 @@
         </details>
         <p class="muted">For another Claude account, add the extension in the browser profile that is signed in to it.</p>
         <p class="connect-status" id="connect-status" role="status"></p>
+        </div>
       </div>
     </section>
 

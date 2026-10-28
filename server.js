@@ -69,6 +69,11 @@ export function checkLocal(req, port, pathname) {
   throw new HttpError(403, "Forbidden origin");
 }
 
+/**
+ * Accounts as the page sees them: whether the app signs in to it itself, but not the Electron session name.
+ */
+const publicAccount = ({ partition, orgId, ...rest }) => ({ ...rest, signedInHere: Boolean(partition) });
+
 function findAccount(id) {
   const account = readAccounts().find((a) => a.id === id);
   if (!account) throw new HttpError(404, "No such account");
@@ -81,35 +86,45 @@ async function handleApi(req, res, url, hub) {
     return sendJson(res, 200, {
       now: Date.now(),
       providers: PROVIDERS,
-      accounts: accounts.filter((a) => !a.removedAt),
-      removed: accounts.filter((a) => a.removedAt),
+      accounts: accounts.filter((a) => !a.removedAt).map(publicAccount),
+      removed: accounts.filter((a) => a.removedAt).map(publicAccount),
       snapshots: readReadings(),
       seen: readSeen(),
       status: hub.status,
       antigravity: hub.antigravity,
       connector: { ...hub.connector, extensionDir: EXTENSION_DIR, storeUrl: STORE_URL },
+      signIn: { available: hub.canSignIn, ...hub.signIn },
     });
+  }
+  if (req.method === "POST" && url.pathname === "/api/accounts/claude/sign-in") {
+    hub.startSignIn(null);
+    return sendJson(res, 202, { started: true });
   }
   if (req.method === "POST" && url.pathname === CONNECTOR_PATH) {
     const account = hub.receiveClaude(await readBody(req));
     return sendJson(res, 200, { accountId: account?.id ?? null });
   }
-  const match = url.pathname.match(/^\/api\/accounts\/([\w-]+)(\/restore)?$/);
+  const match = url.pathname.match(/^\/api\/accounts\/([\w-]+)(\/restore|\/sign-in)?$/);
   if (!match) throw new HttpError(404, "Not found");
   const [, id, action] = match;
-  findAccount(id);
+  const account = findAccount(id);
+  if (req.method === "POST" && action === "/sign-in") {
+    if (account.provider !== "claude") throw new HttpError(400, "Only Claude accounts sign in here");
+    hub.startSignIn(id);
+    return sendJson(res, 202, { started: true });
+  }
   if (req.method === "POST" && action === "/restore") {
-    return sendJson(res, 200, (updateAccount(id, { removedAt: null })));
+    return sendJson(res, 200, publicAccount(updateAccount(id, { removedAt: null })));
   }
   if (req.method === "PATCH" && !action) {
     const body = await readBody(req);
     const name = typeof body.name === "string" ? body.name.trim() : "";
     if (!name || name.length > MAX_NAME_LENGTH) throw new HttpError(400, `Name must be 1 to ${MAX_NAME_LENGTH} characters`);
-    return sendJson(res, 200, (updateAccount(id, { name })));
+    return sendJson(res, 200, publicAccount(updateAccount(id, { name })));
   }
   if (req.method === "DELETE" && !action) {
     // Soft remove, so Undo can bring it back with its history.
-    return sendJson(res, 200, (updateAccount(id, { removedAt: Date.now() })));
+    return sendJson(res, 200, publicAccount(updateAccount(id, { removedAt: Date.now() })));
   }
   throw new HttpError(405, "Method not allowed");
 }

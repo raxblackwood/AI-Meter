@@ -399,3 +399,9 @@ a.btn { display: inline-flex; align-items: center; text-decoration: none; }
 .manual-install { font-size: 13px; }
 .manual-install summary { cursor: pointer; color: var(--accent-text); width: fit-content; }
 .manual-install[open] summary { margin-bottom: 8px; }
+.method { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 10px 0; }
+.method + .method { border-top: 1px solid var(--border); }
+.method h3 { font-size: 13px; }
+.method[hidden] { display: none; }
+.connect-status.connect-error { color: var(--danger); }
+.connect-status.connect-error::before { background: var(--danger); }

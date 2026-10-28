@@ -89,13 +89,14 @@ function renderRemoved() {
 function renderHeader(now) {
   const parts = [];
   const claude = state.accounts.filter((a) => a.provider === "claude");
-  const reported = state.connector.claudeSeenAt;
-  if (claude.length || reported) {
+  // The last reading is on disk, so it survives an app restart; the extension's last report does not.
+  const updated = Math.max(0, ...claude.map((a) => state.seen[a.id] ?? 0));
+  if (claude.length || state.connector.claudeSeenAt) {
     const problems = claude.filter((a) => state.status[a.id]?.state === "signed-out").length;
     parts.push(problems ? `Claude: ${problems} of ${claude.length} signed out`
       : state.connector.error ? `Claude: the browser extension could not read claude.ai (${state.connector.error})`
-      : reported ? `Claude: browser reported ${ago(now - reported)}`
-      : "Claude: waiting for the browser extension (is the browser open?)");
+      : updated ? `Claude: updated ${ago(now - updated)}`
+      : "Claude: waiting for the first reading");
   }
   const ag = state.antigravity;
   const current = state.accounts.find((a) => a.provider === "antigravity" && now - (state.seen[a.id] ?? 0) <= CURRENT_WITHIN_MS);
@@ -121,10 +122,24 @@ function renderConnect(now) {
   const reported = state.connector.claudeSeenAt;
   const claude = state.accounts.filter((a) => a.provider === "claude");
   const error = state.connector.error;
-  $("connect-status").textContent = !reported ? "Waiting for the extension. This updates on its own once it is loaded."
+  // Accounts read through the extension, known from earlier reports even before the next one arrives.
+  const viaBrowser = claude.filter((a) => !a.signedInHere && state.seen[a.id]);
+  const connected = Boolean(reported) || viaBrowser.length > 0;
+  $("connect-status").textContent = !connected ? "Waiting for the extension. This updates on its own once it is loaded."
     : error ? `The extension is installed but could not read claude.ai: ${error}`
-    : `Connected. The extension last reported ${ago(now - reported)}${claude.length ? `; accounts: ${claude.map((a) => a.email ?? a.name).join(", ")}` : ""}.`;
-  $("connect-status").classList.toggle("connect-ok", Boolean(reported) && !error);
+    : `Connected${viaBrowser.length ? `: ${viaBrowser.map((a) => a.email ?? a.name).join(", ")}` : ""}.`;
+  $("connect-status").classList.toggle("connect-ok", connected && !error);
+
+  // Signing in inside the app works only in the desktop app, not in a plain browser tab.
+  const signIn = state.signIn;
+  $("method-app").hidden = !signIn.available;
+  $("sign-in-claude").disabled = signIn.pending;
+  $("sign-in-claude").textContent = signIn.pending ? "Waiting for sign-in..." : "Sign in to Claude";
+  $("sign-in-status").hidden = !signIn.pending && !signIn.error;
+  $("sign-in-status").textContent = signIn.pending
+    ? "Sign in in the window that opened. The account appears here as soon as you are done."
+    : signIn.error ? `Sign-in did not finish: ${signIn.error}` : "";
+  $("sign-in-status").classList.toggle("connect-error", Boolean(signIn.error));
 
   const ag = state.antigravity;
   const agAccounts = state.accounts.filter((a) => a.provider === "antigravity");
@@ -268,11 +283,15 @@ function rowHead(v) {
   const title = renamingId === a.id
     ? `<input class="rename-input" data-rename="${esc(a.id)}" value="${esc(a.name)}" maxlength="40" aria-label="Account name">`
     : `<h3>${esc(a.name)}</h3>`;
-  const signInAgain = a.provider === "claude" && status === "signed-out"
-    ? `<a class="btn btn-primary btn-small" href="https://claude.ai/login" target="_blank" rel="noopener">Sign in</a>` : "";
+  // A signed-out account is fixed where it was signed in: in this app, or at claude.ai in the browser.
+  const appSignIn = a.signedInHere && state.signIn.available;
+  const signInAgain = a.provider !== "claude" || status !== "signed-out" ? ""
+    : appSignIn ? `<button type="button" class="btn btn-primary btn-small" data-sign-in="${esc(a.id)}" ${state.signIn.pending ? "disabled" : ""}>Sign in</button>`
+    : `<a class="btn btn-primary btn-small" href="https://claude.ai/login" target="_blank" rel="noopener">Sign in</a>`;
   const menu = openMenuId === a.id
     ? `<div class="menu" role="menu">
         <button type="button" role="menuitem" data-action="rename" data-id="${esc(a.id)}">Rename</button>
+        ${appSignIn ? `<button type="button" role="menuitem" data-action="sign-in" data-id="${esc(a.id)}">Sign in again</button>` : ""}
         <button type="button" role="menuitem" class="menu-danger" data-action="remove" data-id="${esc(a.id)}">Remove</button>
       </div>` : "";
   const flashBar = v.flash
@@ -348,7 +367,7 @@ function renderBoard(views, now, spanStart, spanEnd) {
 /** A selector that finds the same control after a redraw, or null if it is not one of the board's. */
 function focusSelector(el) {
   if (!el?.closest?.("#board")) return null;
-  for (const attr of ["data-rename", "data-menu"]) {
+  for (const attr of ["data-rename", "data-menu", "data-sign-in"]) {
     if (el.hasAttribute(attr)) return `[${attr}="${CSS.escape(el.getAttribute(attr))}"]`;
   }
   if (el.dataset.action) return `[data-action="${CSS.escape(el.dataset.action)}"][data-id="${CSS.escape(el.dataset.id)}"]`;
@@ -378,7 +397,8 @@ async function load() {
     $("feed-status").textContent = `Cannot reach the dashboard: ${err.message}`;
   }
   clearTimeout(refreshTimer);
-  refreshTimer = setTimeout(load, $("connect").hidden ? REFRESH_MS : CONNECT_REFRESH_MS);
+  const waiting = !$("connect").hidden || state?.signIn.pending;
+  refreshTimer = setTimeout(load, waiting ? CONNECT_REFRESH_MS : REFRESH_MS);
 }
 
 function showToast(text, undo) {
@@ -421,6 +441,18 @@ $("connect-close").addEventListener("click", () => {
   toggleConnect(false);
   $("add-account").focus();
 });
+$("sign-in-claude").addEventListener("click", () => startSignIn("/api/accounts/claude/sign-in"));
+
+/** Asks the desktop app to open a claude.ai sign-in window; the page then follows its progress. */
+async function startSignIn(path) {
+  try {
+    await api("POST", path);
+    await load();
+  } catch (err) {
+    showToast(err.message, null);
+  }
+}
+
 $("copy-dir").addEventListener("click", async () => {
   try {
     await navigator.clipboard.writeText(state.connector.extensionDir);
@@ -448,6 +480,8 @@ document.addEventListener("click", async (event) => {
       const input = document.querySelector(`[data-rename="${CSS.escape(id)}"]`);
       input?.focus();
       input?.select();
+    } else if (item.dataset.action === "sign-in") {
+      await startSignIn(`/api/accounts/${id}/sign-in`);
     } else if (item.dataset.action === "remove") {
       try {
         const removed = await api("DELETE", `/api/accounts/${id}`);
@@ -457,6 +491,11 @@ document.addEventListener("click", async (event) => {
         showToast(err.message, null);
       }
     }
+    return;
+  }
+  const signInButton = event.target.closest("[data-sign-in]");
+  if (signInButton) {
+    await startSignIn(`/api/accounts/${signInButton.dataset.signIn}/sign-in`);
     return;
   }
   const restore = event.target.closest("[data-restore]");

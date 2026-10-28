@@ -18,7 +18,18 @@ The dashboard is also available at http://127.0.0.1:4317 while the app runs.
 
 `npm start` runs the same dashboard without the tray (useful for development).
 
-## Claude accounts: the browser extension
+## Claude accounts
+
+There are two ways to connect a Claude account; pick per account under **Add account > Claude**.
+
+- **Sign in here**: opens a claude.ai sign-in window inside the app.
+  Use email (Claude sends a code) or Google (asks for the password once).
+  Each account gets its own private session in the app, and the app reads its usage every 3 minutes.
+- **Use your browser**: the browser extension below, which reuses the sign-in you already have in your browser.
+
+If the same email is connected both ways, it stays one row.
+
+### The browser extension
 
 Claude limits are shared by the desktop app, claude.ai and the phone, so they are read from your Claude account itself.
 A small browser extension in `extension/` does this with the claude.ai sign-in you already have in your browser, so there is no password to enter.

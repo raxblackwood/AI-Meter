@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createApp, DEFAULT_PORT } from "../server.js";
 import { createHub } from "../src/hub.js";
+import { claudeClient } from "./claude-client.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || DEFAULT_PORT;
@@ -103,7 +104,7 @@ function createTray() {
 
 async function start() {
   app.setAppUserModelId("com.raxblackwood.ai-usage-dashboard");
-  const hub = createHub();
+  const hub = createHub({ claudeClient });
   const server = createApp({ hub, port: PORT });
   server.on("error", (err) => {
     dialog.showErrorBox("AI Usage", err.code === "EADDRINUSE"
