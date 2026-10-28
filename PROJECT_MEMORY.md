@@ -44,7 +44,7 @@ type: project-hub
 - [x] Store prep: `npm run pack-extension` (zip in `dist/`), `PRIVACY.md`, `docs/chrome-web-store.md` (listing, permission justifications, data disclosures), `config.chromeWebStoreUrl` in package.json switches Add account > Claude to an install button.
 - [ ] Rax: register a Chrome Web Store developer account (USD 5), host `PRIVACY.md` publicly (repo is private), add screenshots, submit after the first live reading works.
 - [x] Extension now reports its failures (`{ email?, signedOut, error }`) to `POST /api/connector/claude`; the app shows the reason in the header and the Add account panel (`connector.error`, cleared by the next good reading) (2026-10-28).
-- [ ] First live Claude reading through the extension (Rax loaded it unpacked on 2026-10-28; the first attempt sent nothing, so the cause is not yet known; waiting for him to reload it with the error reporting) (verify `/api/organizations/{org}/usage` shape and that extension fetches carry the claude.ai cookies).
+- [ ] First live Claude reading through the extension. Status 2026-10-28: Rax loaded it in **Edge** (first attempt the folder picker was not confirmed). Reports now reach the app, but are rejected with 400 (no email, or usage not in a known format). Diagnostics added: on rejection `connector.error` and `connector.rejectedShape` (field names and types only) show what claude.ai returned; waiting for the next report to fix the parsing. (verify `/api/organizations/{org}/usage` shape and that extension fetches carry the claude.ai cookies).
 - [ ] Use it for 1 to 2 weeks and check calibration, lockout handling and suggestions against reality.
 - [ ] Later: package an installer (electron-builder) so it does not run from the source folder; optionally publish the extension.
 

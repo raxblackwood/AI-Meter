@@ -5,10 +5,20 @@ import { createAntigravityCollector } from "./antigravity.js";
 import { accountEmail, toReading as claudeReading } from "./claude.js";
 import { accountForIdentity, readAccounts, recordReading } from "./store.js";
 
+/** Field names and value types of an object, two levels deep, with no values. */
+function shape(value, depth = 0) {
+  if (Array.isArray(value)) return value.length && depth < 2 ? [shape(value[0], depth + 1)] : [];
+  if (value && typeof value === "object") {
+    if (depth >= 2) return "object";
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, shape(v, depth + 1)]));
+  }
+  return value === null ? "null" : typeof value;
+}
+
 export function createHub({ antigravity = true, now = Date.now } = {}) {
   const status = {};
   // When the browser extension last reported, and its last error if the latest report was a failure.
-  const connector = { claudeSeenAt: null, error: null };
+  const connector = { claudeSeenAt: null, error: null, rejectedShape: null };
 
   const setStatus = (id, state, error = null) => {
     status[id] = { state, error, checkedAt: now() };
@@ -37,13 +47,20 @@ export function createHub({ antigravity = true, now = Date.now } = {}) {
       if (account) setStatus(account.id, report.signedOut ? "signed-out" : "error", connector.error);
       return account || null;
     }
-    if (!email) throw Object.assign(new Error("Report has no account email"), { status: 400 });
+    const reject = (message) => {
+      // Keep the field names (never the values) of what claude.ai returned, to see what changed.
+      connector.error = message;
+      connector.rejectedShape = { account: shape(report.account), usage: shape(report.usage) };
+      return Object.assign(new Error(message), { status: 400 });
+    };
+    if (!email) throw reject("The report had no account email");
     const reading = claudeReading(report.usage, now());
-    if (!reading) throw Object.assign(new Error("Report has no usage limits"), { status: 400 });
+    if (!reading) throw reject("The report had no usage limits in a known format");
     const account = accountForIdentity("claude", email);
     recordReading(account.id, reading);
     setStatus(account.id, "ok");
     connector.error = null;
+    connector.rejectedShape = null;
     return account;
   }
 
