@@ -1,8 +1,8 @@
-# AI Usage Connector - Privacy Policy
+# AI Meter Connector - Privacy Policy
 
 Last updated: 28 October 2026
 
-AI Usage Connector is a browser extension that works with the AI Usage desktop app.
+AI Meter Connector is a browser extension that works with the AI Meter desktop app.
 It shows you how much of your Claude plan's usage limits you have left.
 
 ## What it reads
@@ -17,14 +17,14 @@ The extension does not read your conversations, files, or anything else on claud
 
 ## Where it goes
 
-The extension sends this information only to the AI Usage app running on your own computer, at `http://127.0.0.1:4317`.
+The extension sends this information only to the AI Meter app running on your own computer, at `http://127.0.0.1:4317`.
 Nothing is sent to the developer or to any other server.
 There is no analytics, advertising, or tracking.
 
 ## What it stores
 
 The extension keeps your last-seen Claude email and the result of its last check in the browser's local extension storage, so its popup can show the connection status.
-The AI Usage app stores the usage readings on your computer.
+The AI Meter app stores the usage readings on your computer.
 Removing the extension deletes its storage; deleting the app's `data` folder deletes the readings.
 
 ## Your sign-in

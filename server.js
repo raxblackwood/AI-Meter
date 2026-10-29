@@ -164,6 +164,6 @@ if (import.meta.main) {
   const hub = createHub({ antigravity: process.env.AI_USAGE_ANTIGRAVITY !== "off" });
   hub.start();
   createApp({ hub, port }).listen(port, "127.0.0.1", () => {
-    console.log(`AI Usage Dashboard on http://localhost:${port}`);
+    console.log(`AI Meter on http://localhost:${port}`);
   });
 }

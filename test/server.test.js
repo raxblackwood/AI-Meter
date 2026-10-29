@@ -137,6 +137,6 @@ test("data from the first version is migrated once", async () => {
 test("static files are served and path traversal is refused", async () => {
   const page = await call("GET", "/");
   assert.equal(page.status, 200);
-  assert.match(page.text, /<title>AI Usage<\/title>/);
+  assert.match(page.text, /<title>AI Meter<\/title>/);
   assert.equal((await call("GET", "/..%2Fserver.js")).status, 404);
 });

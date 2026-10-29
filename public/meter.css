@@ -1,0 +1,112 @@
+/* The floating meter always sits over other apps, so it uses its own dark palette in both themes. */
+:root {
+  --pill: rgba(18, 18, 21, 0.92);
+  --line: rgba(255, 255, 255, 0.1);
+  --track: rgba(255, 255, 255, 0.12);
+  --text: #f4f4f5;
+  --text-2: #a1a1aa;
+  --open: #818cf8;
+  --ready: #34d399;
+  --low: #fbbf24;
+  --empty: #f87171;
+  --unknown: #71717a;
+  --font: "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+}
+
+html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+body { font: 12px/1.35 var(--font); color: var(--text); user-select: none; -webkit-font-smoothing: antialiased; }
+p { margin: 0; }
+
+.pill {
+  position: absolute;
+  top: 0;
+  right: 6px;
+  width: 52px;
+  padding: 4px 0 10px;
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  background: var(--pill);
+  border: 1px solid var(--line);
+  border-radius: 26px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+
+/* Drag handle: the window moves up and down the right edge. */
+.grip {
+  -webkit-app-region: drag;
+  width: 100%;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  cursor: grab;
+}
+.grip span { width: 3px; height: 3px; border-radius: 50%; background: var(--text-2); opacity: 0.6; }
+
+.rings { display: grid; gap: 8px; }
+
+.ring {
+  position: relative;
+  width: 40px;
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.ring:hover .ring-svg, .ring:focus-visible .ring-svg { transform: scale(1.06); }
+.ring:focus-visible { outline: 2px solid var(--open); outline-offset: 2px; }
+.ring-svg { width: 40px; height: 40px; transition: transform 120ms ease-out; }
+.ring-track { fill: none; stroke: var(--track); stroke-width: 3.5; }
+.ring-fill { fill: none; stroke-width: 3.5; stroke-linecap: round; transform: rotate(-90deg); transform-origin: 50% 50%; }
+.ring-value {
+  position: absolute;
+  top: 0;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.ring-value svg { width: 14px; height: 14px; }
+.ring-label { font-size: 10px; font-weight: 500; color: var(--text-2); letter-spacing: 0.02em; }
+
+.tone-open .ring-fill { stroke: var(--open); }
+.tone-ready .ring-fill { stroke: var(--ready); }
+.tone-low .ring-fill { stroke: var(--low); }
+.tone-low .ring-value { color: var(--low); }
+.tone-empty .ring-fill { stroke: var(--empty); }
+.tone-empty .ring-value { color: var(--empty); }
+.tone-unknown .ring-value { color: var(--unknown); }
+
+/* Hover card, to the left of the pill and level with the hovered ring. */
+.card {
+  position: absolute;
+  right: 66px;
+  max-width: 220px;
+  padding: 8px 12px;
+  background: var(--pill);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  white-space: nowrap;
+}
+.card[hidden] { display: none; }
+.card-name { font-size: 13px; font-weight: 600; }
+.card-line { color: var(--text); }
+.card-detail { color: var(--text-2); }
+.card-detail:empty { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ring-svg { transition: none; }
+}

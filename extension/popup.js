@@ -22,7 +22,7 @@ function show(status) {
     state.classList.add("bad");
     state.lastElementChild.textContent = "Could not send usage.";
     $("detail").textContent = /^Dashboard/.test(status.error ?? "")
-      ? "The AI Usage app does not seem to be running on this computer."
+      ? "The AI Meter app does not seem to be running on this computer."
       : status.error;
   }
 }

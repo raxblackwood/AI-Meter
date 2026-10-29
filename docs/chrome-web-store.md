@@ -1,4 +1,4 @@
-# Publishing AI Usage Connector to the Chrome Web Store
+# Publishing AI Meter Connector to the Chrome Web Store
 
 This is the checklist and listing text for submitting `extension/` to the Chrome Web Store.
 Edge Add-ons accepts the same zip.
@@ -24,34 +24,34 @@ Edge Add-ons accepts the same zip.
 
 ## Store listing
 
-- **Name**: AI Usage Connector
-- **Summary** (up to 132 characters): Sends your Claude plan usage (5-hour and weekly limits) to the AI Usage desktop app on your computer.
+- **Name**: AI Meter Connector
+- **Summary** (up to 132 characters): Sends your Claude plan usage (5-hour and weekly limits) to the AI Meter desktop app on your computer.
 - **Category**: Productivity
 - **Language**: English
 - **Description**:
 
-  > Shows how much of your Claude plan you have left, together with your other AI accounts, in the AI Usage desktop app.
+  > Shows how much of your Claude plan you have left, together with your other AI accounts, in the AI Meter desktop app.
   >
-  > While you are signed in to claude.ai, the extension reads your 5-hour and weekly usage every few minutes, the same numbers as Settings > Usage, and sends them only to the AI Usage app on your own computer.
+  > While you are signed in to claude.ai, the extension reads your 5-hour and weekly usage every few minutes, the same numbers as Settings > Usage, and sends them only to the AI Meter app on your own computer.
   > It uses your existing sign-in, so you never enter a password.
   >
   > - Works with any number of Claude accounts: install it in each browser profile.
   > - Reads only your usage limits, not your conversations.
   > - Sends nothing to the developer or anywhere else.
   >
-  > Requires the AI Usage desktop app running on the same computer.
+  > Requires the AI Meter desktop app running on the same computer.
 
 - **Icon**: `extension/icon-128.png`
 - **Screenshots** (1280x800): the app with a Claude row, and the extension popup showing "Sending usage for ...".
 
 ## Privacy practices tab
 
-- **Single purpose**: Send the user's own Claude plan usage limits to the AI Usage app on the same computer.
+- **Single purpose**: Send the user's own Claude plan usage limits to the AI Meter app on the same computer.
 - **Permission justifications**:
   - `alarms`: re-read usage every 3 minutes.
   - `storage`: remember the last account email and the last check result for the popup.
   - Host `https://claude.ai/*`: read the usage limits and account email from the user's signed-in claude.ai session.
-  - Host `http://127.0.0.1:4317/*`: send the readings to the AI Usage app on the user's own computer.
+  - Host `http://127.0.0.1:4317/*`: send the readings to the AI Meter app on the user's own computer.
 - **Remote code**: No.
 - **Data usage**: tick only "Personally identifiable information" (the account email, used only to tell accounts apart).
   Usage percentages are not personal data; nothing else is collected.

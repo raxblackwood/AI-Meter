@@ -7,6 +7,8 @@ type: project-hub
 
 # AI Usage Dashboard
 
+Product name: **AI Meter** (renamed 2026-10-29; the vault project and repository keep the old name).
+
 > [!ABSTRACT] Quick Summary (Token-Saving Preview)
 > **Scope**: Personal planner for AI coding quotas across any number of Claude and Antigravity accounts, fully automatic.
 > **Stack**: Electron tray app hosting a Node local server; Claude read by a browser extension; Antigravity read from its local language server.
@@ -45,6 +47,7 @@ type: project-hub
 - [x] Both ways to connect Claude (ADR-011): in-app sign-in window restored as an option next to the extension; verified the window opens from Add account > Claude (2026-10-28). 36 tests.
 - [x] Layout redesign per Rax (ADR-012): one Next up focal card, simpler rows, start time on every bar, 3 days / Week switch, lockouts plan from the exact unlock time (2026-10-28). 36 tests.
 - [x] Taskbar badges (ADR-013): one tray icon per account with percent left, lock or ready; "Show in taskbar" checklist (2026-10-29). 39 tests. Icons registered with Windows (start in the overflow); Rax to drag them onto the taskbar.
+- [x] Product renamed **AI Meter** with a six-halo logo; tray badges replaced by a floating meter on the right screen edge (ADR-014, 2026-10-29). Verified on screen: pill at the right edge with live rings, old startup entry removed. 39 tests.
 - [ ] Rax: register a Chrome Web Store developer account (USD 5), host `PRIVACY.md` publicly (repo is private), add screenshots, submit after the first live reading works.
 - [x] Extension now reports its failures (`{ email?, signedOut, error }`) to `POST /api/connector/claude`; the app shows the reason in the header and the Add account panel (`connector.error`, cleared by the next good reading) (2026-10-28).
 - [x] First live Claude reading through the extension (2026-10-28, 20:48): Rax's account loaded in **Edge** became "Claude 1" with 5-hour 42% used and weekly 39% used, matching `five_hour` / `seven_day` with `utilization` and `resets_at`, and `/api/account` `email_address`. The app showed it in Next up and Active session. One earlier report was rejected (cause not captured); rejection diagnostics (`connector.error`, `connector.rejectedShape`, field names only) stay in place for the next time. (verify `/api/organizations/{org}/usage` shape and that extension fetches carry the claude.ai cookies).

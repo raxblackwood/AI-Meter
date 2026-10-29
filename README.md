@@ -1,4 +1,4 @@
-# AI Usage Dashboard
+# AI Meter
 
 A desktop app that shows how much AI coding usage is left on each of your accounts, per 5-hour session and per week, and suggests which account to use next.
 It reads Claude and Antigravity on its own; there is nothing to log by hand.
@@ -12,11 +12,11 @@ npm install
 npm run app
 ```
 
-The app opens a window and stays in the system tray when the window is closed.
-On first run it turns on **Start with Windows**; untick it in the tray menu to stop that.
+The app opens the dashboard window and keeps a floating meter on the right edge of the screen; closing the window leaves the meter running.
+On first run it turns on **Start with Windows**; untick it in the meter's right-click menu to stop that.
 The dashboard is also available at http://127.0.0.1:4317 while the app runs.
 
-`npm start` runs the same dashboard without the tray (useful for development).
+`npm start` runs the same dashboard without the desktop window or meter (useful for development).
 
 ## Claude accounts
 
@@ -60,15 +60,18 @@ It finds the `language_server` process, takes its CSRF token from the process ar
 
 The app does not sign in to Google itself: tools that reuse Antigravity's Google sign-in have led to accounts being suspended.
 
-## Taskbar badges
+## The floating meter
 
-Each account also gets a small icon next to the clock showing what is left in its current 5-hour window:
-blue with the percent left, amber at 25% or less, red at 5% or less, green "100" when no window is running, a red padlock while locked, and "?" when it cannot be read.
-Hover for the details; click to open the dashboard.
-The tray menu has **Show in taskbar** to choose which accounts get an icon.
+A slim pill sits on the right edge of the screen, above other windows, with one ring per account showing what is left in its current 5-hour window:
+indigo with the percent left, amber at 25% or less, red at 5% or less, green "100" when no window is running, a red padlock while locked, and "?" when it cannot be read.
+Under each ring is a short label (C1 for Claude 1, A1 for Antigravity 1).
 
-Windows 11 puts new icons in the hidden-icons area (the ^ arrow).
-Drag them onto the taskbar, or turn them on in Settings > Personalization > Taskbar > Other system tray icons (they are listed as "Electron" while the app runs from source).
+- Hover a ring for its name, time left and weekly use; click it to open the dashboard.
+- Drag the dots at the top to move the meter up or down the edge.
+- Right-click for the menu: open the dashboard, **Show in meter** (choose accounts), start with Windows, quit.
+
+The meter never takes focus, and clicks pass through the empty space around it.
+There is no tray icon.
 
 ## Accounts
 

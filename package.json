@@ -1,6 +1,6 @@
 {
   "name": "ai-usage-dashboard",
-  "productName": "AI Usage",
+  "productName": "AI Meter",
   "version": "0.2.0",
   "private": true,
   "description": "Desktop dashboard that tracks Claude and Antigravity session and weekly usage across accounts and plans the next session.",

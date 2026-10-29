@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>AI Meter</title>
+  <link rel="stylesheet" href="meter.css">
+  <script type="module" src="meter.js"></script>
+</head>
+<body>
+  <!-- The window is wider than the pill so the hover card has room; the empty area lets clicks through. -->
+  <div class="card" id="card" hidden>
+    <p class="card-name" id="card-name"></p>
+    <p class="card-line" id="card-line"></p>
+    <p class="card-detail" id="card-detail"></p>
+  </div>
+  <nav class="pill" id="pill" aria-label="AI Meter">
+    <div class="grip" title="Drag to move" aria-hidden="true"><span></span><span></span><span></span></div>
+    <div class="rings" id="rings"></div>
+  </nav>
+</body>
+</html>
