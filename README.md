@@ -16,6 +16,14 @@ The app opens the dashboard window and keeps a floating meter on the right edge 
 On first run it turns on **Start with Windows**; untick it in the meter's right-click menu to stop that.
 The dashboard is also available at http://127.0.0.1:4317 while the app runs.
 
+To find it in Windows search and the Start menu, add the shortcut once:
+
+```bash
+npm run install-shortcut
+```
+
+Opening AI Meter while it already runs brings the dashboard back; closing the dashboard only hides it, and the floating meter keeps running.
+
 `npm start` runs the same dashboard without the desktop window or meter (useful for development).
 
 ## Claude accounts

@@ -13,7 +13,8 @@
     "app": "electron .",
     "start": "node server.js",
     "test": "node --test",
-    "pack-extension": "node scripts/pack-extension.mjs"
+    "pack-extension": "node scripts/pack-extension.mjs",
+    "install-shortcut": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install-shortcut.ps1"
   },
   "devDependencies": {
     "electron": "^45.1.0"

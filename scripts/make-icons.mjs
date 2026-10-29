@@ -47,7 +47,28 @@ function png(size) {
   return encodePng(size, rgba);
 }
 
+/** A Windows .ico holding PNG images at the sizes Windows asks for (Start menu, taskbar, Explorer). */
+function ico(sizes) {
+  const images = sizes.map((size) => ({ size, data: png(size) }));
+  const header = Buffer.alloc(6 + 16 * images.length);
+  header.writeUInt16LE(1, 2); // type: icon
+  header.writeUInt16LE(images.length, 4);
+  let offset = header.length;
+  images.forEach(({ size, data }, i) => {
+    const entry = 6 + 16 * i;
+    header[entry] = size >= 256 ? 0 : size; // 0 means 256
+    header[entry + 1] = size >= 256 ? 0 : size;
+    header.writeUInt16LE(1, entry + 4); // color planes
+    header.writeUInt16LE(32, entry + 6); // bits per pixel
+    header.writeUInt32LE(data.length, entry + 8);
+    header.writeUInt32LE(offset, entry + 12);
+    offset += data.length;
+  });
+  return Buffer.concat([header, ...images.map((i) => i.data)]);
+}
+
 writeFileSync(new URL("../app/icon.png", import.meta.url), png(256));
+writeFileSync(new URL("../app/icon.ico", import.meta.url), ico([16, 24, 32, 48, 64, 256]));
 writeFileSync(new URL("../public/icon.png", import.meta.url), png(64));
 writeFileSync(new URL("../extension/icon-32.png", import.meta.url), png(32));
 writeFileSync(new URL("../extension/icon-128.png", import.meta.url), png(128));
