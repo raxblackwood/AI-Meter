@@ -15,6 +15,9 @@ const bridge = window.aiMeter ?? {
   open() {},
   menu() {},
   hide() {},
+  dragStart() {},
+  dragMove() {},
+  dragEnd() {},
   setHeight() {},
   hidden: async () => [],
   onHiddenChanged() {},
@@ -75,13 +78,17 @@ async function load() {
   render();
 }
 
-// Clicks pass through the transparent part of the window; only the pill and its card take the mouse.
+// Clicks pass through the transparent part of the window; only the pill takes the mouse. This is decided
+// from what is under the pointer alone: switching click-through off makes Chromium fire a spurious
+// "mouseleave", so reacting to that would flip straight back and drop the click.
+let interactive = false;
+function setInteractive(on) {
+  if (on === interactive) return;
+  interactive = on;
+  bridge.setInteractive(on);
+}
 document.addEventListener("mousemove", (event) => {
-  bridge.setInteractive(Boolean(event.target.closest?.(".pill")));
-});
-document.addEventListener("mouseleave", () => {
-  bridge.setInteractive(false);
-  $("card").hidden = true;
+  setInteractive(Boolean(event.target.closest?.(".pill")));
 });
 
 $("rings").addEventListener("mouseover", (event) => {
@@ -98,11 +105,49 @@ $("rings").addEventListener("focusin", (event) => {
 $("rings").addEventListener("focusout", () => {
   $("card").hidden = true;
 });
+// A press that moves more than a few pixels is a drag; a press that stays put is a click.
+const DRAG_THRESHOLD_PX = 3;
+let press = null;
+let suppressClick = false;
+
+$("pill").addEventListener("pointerdown", (event) => {
+  if (event.button !== 0 || event.target.closest(".close")) return;
+  // A drag that ended away from a ring fires no click, so the flag starts fresh with each press.
+  suppressClick = false;
+  press = { y: event.screenY, dragging: false };
+  $("pill").setPointerCapture(event.pointerId);
+});
+$("pill").addEventListener("pointermove", (event) => {
+  if (!press) return;
+  if (!press.dragging && Math.abs(event.screenY - press.y) > DRAG_THRESHOLD_PX) {
+    press.dragging = true;
+    $("card").hidden = true;
+    document.body.classList.add("dragging");
+    bridge.dragStart();
+  }
+  if (press.dragging) bridge.dragMove();
+});
+function endPress() {
+  if (press?.dragging) {
+    bridge.dragEnd();
+    suppressClick = true;
+  }
+  press = null;
+  document.body.classList.remove("dragging");
+}
+$("pill").addEventListener("pointerup", endPress);
+$("pill").addEventListener("pointercancel", endPress);
+
 $("rings").addEventListener("click", (event) => {
+  if (suppressClick) {
+    suppressClick = false;
+    return;
+  }
   if (event.target.closest(".ring")) bridge.open();
 });
 $("close").addEventListener("click", () => {
-  bridge.setInteractive(false);
+  // The meter comes back click-through when it is shown again.
+  interactive = false;
   bridge.hide();
 });
 document.addEventListener("contextmenu", (event) => {

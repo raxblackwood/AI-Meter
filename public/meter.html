@@ -9,9 +9,9 @@
 <body>
   <!-- The window is wider than the pill so the hover card has room; the empty area lets clicks through. -->
   <div class="card" id="card" hidden></div>
-  <nav class="pill" id="pill" aria-label="AI Meter">
+  <!-- Drag anywhere on the pill to move it up or down; a click on a ring opens the dashboard. -->
+  <nav class="pill" id="pill" aria-label="AI Meter" title="Drag to move">
     <button type="button" class="close" id="close" title="Hide meter (bring it back from the dashboard)" aria-label="Hide meter">&#215;</button>
-    <div class="grip" title="Drag to move" aria-hidden="true"><span></span><span></span><span></span></div>
     <div class="rings" id="rings"></div>
   </nav>
 </body>

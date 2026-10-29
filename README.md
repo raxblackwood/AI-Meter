@@ -76,9 +76,9 @@ A ring turns amber at 25% or less and red at 5% or less; a locked account shows 
 Under each pair is a short label (C1 for Claude 1, A1 for Antigravity 1).
 
 - Hover a pair for the account name, session time left and weekly use; click it to open the dashboard.
-- Drag the dots at the top to move the meter up or down the edge.
+- Drag the meter anywhere to move it up or down the edge; a click that does not move opens the dashboard.
 - Right-click for the menu: open the dashboard, **Hide meter**, **Show in meter** (choose accounts), start with Windows, quit.
-- To close the meter, hover it and click the small **×** on its top corner (or right-click > Hide meter).
+- To close the meter, click the **×** at its top (or right-click > Hide meter).
   Bring it back with **Show meter** in the dashboard header; open the dashboard by searching "AI Meter" in Windows. The choice is remembered across restarts.
 
 The meter never takes focus, and clicks pass through the empty space around it.

@@ -7,6 +7,9 @@ contextBridge.exposeInMainWorld("aiMeter", {
   open: () => ipcRenderer.send("meter:open"),
   menu: () => ipcRenderer.send("meter:menu"),
   hide: () => ipcRenderer.send("meter:hide"),
+  dragStart: () => ipcRenderer.send("meter:drag-start"),
+  dragMove: () => ipcRenderer.send("meter:drag-move"),
+  dragEnd: () => ipcRenderer.send("meter:drag-end"),
   hidden: () => ipcRenderer.invoke("meter:hidden"),
   onHiddenChanged: (callback) => ipcRenderer.on("meter:hidden-changed", (_event, ids) => callback(ids)),
 });

@@ -1,4 +1,4 @@
-// The floating meter: a slim always-on-top pill on the right edge of the screen, one ring per account.
+// The floating meter: a slim always-on-top pill on the right edge of the screen, two rings per account.
 // It replaces tray icons. The window is wider than the pill so the hover card fits; the transparent part
 // lets clicks through to whatever is underneath.
 import { BrowserWindow, ipcMain, Menu, screen } from "electron";
@@ -61,10 +61,14 @@ export function createMeter({ url, userData, onOpen, menuItems }) {
   function setVisible(visible) {
     settings.write({ visible });
     if (!win) return;
-    // Hidden windows still take no clicks, but reset so a later show starts click-through.
+    if (!visible) {
+      win.hide();
+      return;
+    }
+    win.showInactive();
+    // Click-through with pointer forwarding has to be set on the shown window; set before showing,
+    // Windows drops the forwarding and the meter stops reacting to the mouse.
     win.setIgnoreMouseEvents(true, { forward: true });
-    if (visible) win.showInactive();
-    else win.hide();
   }
 
   function showMenu() {
@@ -113,12 +117,6 @@ export function createMeter({ url, userData, onOpen, menuItems }) {
       if (isVisible()) win.showInactive();
     });
 
-    // Dragging the grip moves the meter up or down; it always snaps back to the right edge.
-    win.on("moved", () => {
-      const { y } = win.getBounds();
-      settings.write({ y });
-      place(y);
-    });
     screen.on("display-metrics-changed", () => place());
     screen.on("display-removed", () => place());
   }
@@ -132,6 +130,21 @@ export function createMeter({ url, userData, onOpen, menuItems }) {
   ipcMain.on("meter:open", () => onOpen());
   ipcMain.on("meter:menu", () => showMenu());
   ipcMain.on("meter:hide", () => setVisible(false));
+
+  // Dragging: the page reports start, moves and end; the window follows the cursor up and down only,
+  // stays on the right edge, and remembers where it was left.
+  let drag = null;
+  ipcMain.on("meter:drag-start", () => {
+    if (win) drag = { cursorY: screen.getCursorScreenPoint().y, windowY: win.getBounds().y };
+  });
+  ipcMain.on("meter:drag-move", () => {
+    if (drag) place(drag.windowY + screen.getCursorScreenPoint().y - drag.cursorY);
+  });
+  ipcMain.on("meter:drag-end", () => {
+    if (!drag) return;
+    drag = null;
+    settings.write({ y: win.getBounds().y });
+  });
   ipcMain.handle("meter:hidden", () => hiddenIds());
 
   return {
