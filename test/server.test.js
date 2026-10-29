@@ -134,6 +134,37 @@ test("data from the first version is migrated once", async () => {
   }
 });
 
+test("the dashboard can hide and show the floating meter", async () => {
+  // This suite's server has no meter, like `npm start`.
+  assert.equal((await call("GET", "/api/state")).body.meter, null);
+  assert.equal((await call("POST", "/api/meter", { visible: false })).status, 501);
+
+  let visible = true;
+  const meter = { isVisible: () => visible, setVisible: (v) => { visible = v; } };
+  const app = createApp({ hub: createHub({ antigravity: false }), port: 0, meter });
+  await new Promise((resolve) => app.listen(0, "127.0.0.1", resolve));
+  const meterPort = app.address().port;
+  const meterApp = createApp({ hub: createHub({ antigravity: false }), port: meterPort, meter });
+  app.close();
+  await new Promise((resolve) => meterApp.listen(meterPort, "127.0.0.1", resolve));
+  try {
+    const post = (body) => new Promise((resolve, reject) => {
+      const req = request({ host: "127.0.0.1", port: meterPort, path: "/api/meter", method: "POST", headers: { host: `127.0.0.1:${meterPort}` } }, (res) => {
+        let text = "";
+        res.on("data", (c) => (text += c));
+        res.on("end", () => resolve({ status: res.statusCode, body: JSON.parse(text) }));
+      });
+      req.on("error", reject);
+      req.end(JSON.stringify(body));
+    });
+    assert.deepEqual((await post({ visible: false })).body, { visible: false });
+    assert.equal(visible, false);
+    assert.equal((await post({ visible: "no" })).status, 400);
+  } finally {
+    meterApp.close();
+  }
+});
+
 test("static files are served and path traversal is refused", async () => {
   const page = await call("GET", "/");
   assert.equal(page.status, 200);

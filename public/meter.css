@@ -19,7 +19,8 @@ p { margin: 0; }
 
 .pill {
   position: absolute;
-  top: 0;
+  /* Room above for the close button, which overlaps the top corner. */
+  top: 6px;
   right: 4px;
   width: 36px;
   padding: 2px 0 6px;
@@ -101,3 +102,26 @@ p { margin: 0; }
 @media (prefers-reduced-motion: reduce) {
   .ring-svg { transition: none; }
 }
+
+/* Close: a small round button on the pill's top-left corner, shown while the pointer is over the pill. */
+.close {
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  font: 600 12px/1 var(--font);
+  color: var(--text);
+  background: #3f3f46;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+.pill:hover .close, .close:focus-visible { opacity: 1; }
+.close:hover { background: #52525b; }
+.close:focus-visible { outline: 2px solid var(--session); outline-offset: 1px; }

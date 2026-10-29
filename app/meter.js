@@ -12,7 +12,7 @@ const WIDTH = 300;
 const MIN_HEIGHT = 48;
 const EDGE_GAP = 0;
 
-/** Saved meter settings: its vertical position and the accounts the user chose not to show. */
+/** Saved meter settings: its vertical position, whether it is shown, and the accounts left out of it. */
 function settingsStore(dir) {
   const path = join(dir, "meter.json");
   const read = () => {
@@ -55,6 +55,18 @@ export function createMeter({ url, userData, onOpen, menuItems }) {
     win.webContents.send("meter:hidden-changed", [...set]);
   }
 
+  const isVisible = () => settings.read().visible !== false;
+
+  /** Hides or shows the meter and remembers the choice; the dashboard has a button to bring it back. */
+  function setVisible(visible) {
+    settings.write({ visible });
+    if (!win) return;
+    // Hidden windows still take no clicks, but reset so a later show starts click-through.
+    win.setIgnoreMouseEvents(true, { forward: true });
+    if (visible) win.showInactive();
+    else win.hide();
+  }
+
   function showMenu() {
     const hidden = new Set(hiddenIds());
     const accounts = readAccounts().filter((a) => !a.removedAt);
@@ -66,6 +78,8 @@ export function createMeter({ url, userData, onOpen, menuItems }) {
     }));
     Menu.buildFromTemplate([
       ...menuItems.top(),
+      { label: "Hide meter", click: () => setVisible(false) },
+      { type: "separator" },
       ...(checklist.length ? [{ label: "Show in meter", submenu: checklist }, { type: "separator" }] : []),
       ...menuItems.bottom(),
     ]).popup({ window: win });
@@ -95,7 +109,9 @@ export function createMeter({ url, userData, onOpen, menuItems }) {
     win.setIgnoreMouseEvents(true, { forward: true });
     place();
     win.loadURL(url);
-    win.once("ready-to-show", () => win.showInactive());
+    win.once("ready-to-show", () => {
+      if (isVisible()) win.showInactive();
+    });
 
     // Dragging the grip moves the meter up or down; it always snaps back to the right edge.
     win.on("moved", () => {
@@ -115,10 +131,13 @@ export function createMeter({ url, userData, onOpen, menuItems }) {
   });
   ipcMain.on("meter:open", () => onOpen());
   ipcMain.on("meter:menu", () => showMenu());
+  ipcMain.on("meter:hide", () => setVisible(false));
   ipcMain.handle("meter:hidden", () => hiddenIds());
 
   return {
     create,
+    isVisible,
+    setVisible,
     destroy: () => win?.destroy(),
   };
 }

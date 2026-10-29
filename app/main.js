@@ -102,7 +102,12 @@ const menuItems = {
 async function start() {
   app.setAppUserModelId(APP_ID);
   const hub = createHub({ claudeClient });
-  const server = createApp({ hub, port: PORT });
+  // The dashboard shows and hides the meter through the server; the meter is created once the server listens.
+  const meterControl = {
+    isVisible: () => meter?.isVisible() ?? false,
+    setVisible: (visible) => meter?.setVisible(visible),
+  };
+  const server = createApp({ hub, port: PORT, meter: meterControl });
   server.on("error", (err) => {
     dialog.showErrorBox("AI Meter", err.code === "EADDRINUSE"
       ? `Port ${PORT} is already in use. Close the other copy of the dashboard (for example \`npm start\`) and try again.`

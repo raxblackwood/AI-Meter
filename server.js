@@ -80,7 +80,11 @@ function findAccount(id) {
   return account;
 }
 
-async function handleApi(req, res, url, hub) {
+/**
+ * `meter` is the desktop app's floating meter (`isVisible()`, `setVisible(bool)`), or null when the server
+ * runs on its own.
+ */
+async function handleApi(req, res, url, hub, meter) {
   if (req.method === "GET" && url.pathname === "/api/state") {
     const accounts = readAccounts();
     return sendJson(res, 200, {
@@ -94,7 +98,15 @@ async function handleApi(req, res, url, hub) {
       antigravity: hub.antigravity,
       connector: { ...hub.connector, extensionDir: EXTENSION_DIR, storeUrl: STORE_URL },
       signIn: { available: hub.canSignIn, ...hub.signIn },
+      meter: meter ? { visible: meter.isVisible() } : null,
     });
+  }
+  if (req.method === "POST" && url.pathname === "/api/meter") {
+    if (!meter) throw new HttpError(501, "The floating meter is part of the desktop app");
+    const body = await readBody(req);
+    if (typeof body.visible !== "boolean") throw new HttpError(400, "visible must be true or false");
+    meter.setVisible(body.visible);
+    return sendJson(res, 200, { visible: meter.isVisible() });
   }
   if (req.method === "POST" && url.pathname === "/api/accounts/claude/sign-in") {
     hub.startSignIn(null);
@@ -143,12 +155,12 @@ async function serveStatic(res, url) {
   res.end(body);
 }
 
-export function createApp({ hub, port }) {
+export function createApp({ hub, port, meter = null }) {
   return createServer(async (req, res) => {
     const url = new URL(req.url, "http://localhost");
     try {
       checkLocal(req, port, url.pathname);
-      if (url.pathname.startsWith("/api/")) await handleApi(req, res, url, hub);
+      if (url.pathname.startsWith("/api/")) await handleApi(req, res, url, hub, meter);
       else if (req.method === "GET") await serveStatic(res, url);
       else throw new HttpError(405, "Method not allowed");
     } catch (err) {

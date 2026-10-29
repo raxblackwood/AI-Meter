@@ -14,6 +14,7 @@ const bridge = window.aiMeter ?? {
   setInteractive() {},
   open() {},
   menu() {},
+  hide() {},
   setHeight() {},
   hidden: async () => [],
   onHiddenChanged() {},
@@ -49,7 +50,7 @@ function render() {
         <span class="ring-label">${esc(initials(b.name))}</span>
       </button>`).join("");
   // The window hugs the pill so the meter takes no more of the screen edge than it needs.
-  bridge.setHeight(Math.ceil($("pill").getBoundingClientRect().height) + 8);
+  bridge.setHeight(Math.ceil($("pill").getBoundingClientRect().bottom) + 8);
 }
 
 function showCard(el) {
@@ -99,6 +100,10 @@ $("rings").addEventListener("focusout", () => {
 });
 $("rings").addEventListener("click", (event) => {
   if (event.target.closest(".ring")) bridge.open();
+});
+$("close").addEventListener("click", () => {
+  bridge.setInteractive(false);
+  bridge.hide();
 });
 document.addEventListener("contextmenu", (event) => {
   event.preventDefault();

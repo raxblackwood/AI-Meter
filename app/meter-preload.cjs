@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld("aiMeter", {
   setHeight: (px) => ipcRenderer.send("meter:height", Number(px)),
   open: () => ipcRenderer.send("meter:open"),
   menu: () => ipcRenderer.send("meter:menu"),
+  hide: () => ipcRenderer.send("meter:hide"),
   hidden: () => ipcRenderer.invoke("meter:hidden"),
   onHiddenChanged: (callback) => ipcRenderer.on("meter:hidden-changed", (_event, ids) => callback(ids)),
 });

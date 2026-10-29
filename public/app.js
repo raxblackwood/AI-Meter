@@ -124,6 +124,11 @@ function renderStatus(now) {
     state.signIn.available ? "Claude: read by the app and the browser extension" : "Claude: read by the browser extension",
   ].join("\n");
   renderConnect(now);
+
+  // The floating meter belongs to the desktop app; in a plain browser tab there is nothing to toggle.
+  const toggle = $("meter-toggle");
+  toggle.hidden = !state.meter;
+  if (state.meter) toggle.textContent = state.meter.visible ? "Hide meter" : "Show meter";
 }
 
 function renderConnect(now) {
@@ -448,6 +453,14 @@ async function finishRename(id, save) {
 // ---------- events ----------
 
 $("add-account").addEventListener("click", () => toggleConnect($("connect").hidden));
+$("meter-toggle").addEventListener("click", async () => {
+  try {
+    await api("POST", "/api/meter", { visible: !state.meter.visible });
+    await load();
+  } catch (err) {
+    showToast(err.message, null);
+  }
+});
 for (const button of document.querySelectorAll("[data-range]")) {
   button.addEventListener("click", () => setRange(button.dataset.range));
 }
