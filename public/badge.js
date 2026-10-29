@@ -1,9 +1,17 @@
-// What the floating meter shows for one account. Pure, so the meter page and the tests share it.
+// What the floating meter shows for one account: two levels, the 5-hour session (outer ring) and the
+// week (inner ring). Pure, so the meter page and the tests share it.
 
-const pct = (n) => `${Math.round(n)}%`;
+const DAY = 24 * 60 * 60 * 1000;
 
 function clock(ms) {
   return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+/** "14:20" today, "Tue 14:20" within the week, otherwise "3 Nov". */
+function when(ms, now) {
+  if (new Date(ms).toDateString() === new Date(now).toDateString()) return clock(ms);
+  if (ms - now < 6 * DAY) return `${new Date(ms).toLocaleDateString([], { weekday: "short" })} ${clock(ms)}`;
+  return new Date(ms).toLocaleDateString([], { day: "numeric", month: "short" });
 }
 
 /** "Claude 1" -> "C1", "Antigravity 2" -> "A2", "Work laptop" -> "WL", "Work" -> "WO". */
@@ -16,25 +24,44 @@ export function initials(name) {
   return words[0].slice(0, 2).toUpperCase();
 }
 
+/** How full a ring is and its color: null `leftPct` means the level is not known. */
+function level(leftPct) {
+  if (leftPct === null) return { leftPct: null, tone: "unknown" };
+  const left = Math.max(0, Math.min(100, Math.round(leftPct)));
+  return { leftPct: left, tone: left <= 5 ? "empty" : left <= 25 ? "low" : "ok" };
+}
+
 /**
- * The meter entry for an account: `text` (percent or "?") or `glyph: "lock"`, a `tone`, how full the ring
- * is (`fillPct`, what is left), and two short lines for the hover card.
+ * The meter entry for an account: `session` and `week` levels (`leftPct`, `tone`), an overall `state`
+ * (ok, locked, unknown), and lines for the hover card.
  * `view` comes from model.js accountView; `status` is the hub's status for the account.
  */
-export function badgeFor(view, status, seen) {
+export function badgeFor(view, status, seen, now = Date.now()) {
   const name = view.account.name;
-  const week = view.weekly?.resetsAt ? `Week ${pct(view.weekly.usedPct)} used` : null;
   if (!seen || status?.state === "signed-out" || status?.state === "error") {
     const why = !seen ? "Waiting for the first reading" : status.state === "signed-out" ? "Signed out" : "Could not be read";
-    return { name, text: "?", tone: "unknown", fillPct: 0, line: why, detail: null };
+    return { name, state: "unknown", session: level(null), week: level(null), lines: [why] };
   }
   if (view.exhausted) {
-    return { name, glyph: "lock", tone: "empty", fillPct: 0, line: `Locked until ${clock(view.weekly.resetsAt)}`, detail: "Weekly limit reached" };
+    return {
+      name,
+      state: "locked",
+      session: level(0),
+      week: level(0),
+      lines: [`Locked until ${when(view.weekly.resetsAt, now)}`, "Weekly limit reached"],
+    };
   }
-  if (view.session.state !== "open") {
-    return { name, text: "100", tone: "ready", fillPct: 100, line: "Ready, no window running", detail: week };
-  }
-  const left = Math.max(0, Math.round(100 - view.session.usedPct));
-  const tone = left <= 5 ? "empty" : left <= 25 ? "low" : "open";
-  return { name, text: String(left), tone, fillPct: left, line: `${left}% left until ${clock(view.session.resetsAt)}`, detail: week };
+  const open = view.session.state === "open";
+  const session = level(open ? 100 - view.session.usedPct : 100);
+  const week = level(view.weekly?.resetsAt ? 100 - view.weekly.usedPct : null);
+  return {
+    name,
+    state: "ok",
+    session,
+    week,
+    lines: [
+      open ? `Session: ${session.leftPct}% left until ${when(view.session.resetsAt, now)}` : "Session: ready, none running",
+      week.leftPct === null ? "Week: not reported" : `Week: ${week.leftPct}% left, resets ${when(view.weekly.resetsAt, now)}`,
+    ],
+  };
 }

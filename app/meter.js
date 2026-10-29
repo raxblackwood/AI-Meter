@@ -9,7 +9,7 @@ import { readAccounts } from "../src/store.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WIDTH = 300;
-const MIN_HEIGHT = 80;
+const MIN_HEIGHT = 48;
 const EDGE_GAP = 0;
 
 /** Saved meter settings: its vertical position and the accounts the user chose not to show. */

@@ -1,13 +1,13 @@
-// The floating meter: one ring per account with what is left in its current window.
+// The floating meter: two rings per account, the 5-hour session outside and the week inside.
 // Runs in a small always-on-top window (app/meter.js); `window.aiMeter` comes from its preload.
 import { badgeFor, initials } from "./badge.js";
 import { accountView, DAY } from "./model.js";
 
 const REFRESH_MS = 30_000;
 const PROVIDER_ORDER = { claude: 0, antigravity: 1 };
-const RADIUS = 16;
-const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
-const LOCK = `<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M5 7V5a3 3 0 0 1 6 0v2h.5A1.5 1.5 0 0 1 13 8.5v5a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 3 13.5v-5A1.5 1.5 0 0 1 4.5 7H5Zm1.5 0h3V5a1.5 1.5 0 0 0-3 0v2Z"/></svg>`;
+// Ring geometry in a 28x28 view box, 3px strokes with a 2px gap between the rings.
+const OUTER = 11.5;
+const INNER = 6.5;
 
 // Outside the desktop app (opened in a normal browser) the bridge is missing; the meter still renders.
 const bridge = window.aiMeter ?? {
@@ -25,41 +25,43 @@ let state = null;
 let hidden = new Set();
 let badges = [];
 
+/** One ring: a track, and an arc for what is left. A level that is not reported gets a dashed track. */
+function ring(kind, radius, level) {
+  const circumference = 2 * Math.PI * radius;
+  const dash = ((level.leftPct ?? 0) / 100) * circumference;
+  const track = `<circle class="ring-track ${level.leftPct === null ? "unknown" : ""}" cx="14" cy="14" r="${radius}"/>`;
+  const fill = dash > 0
+    ? `<circle class="ring-fill ring-${kind} tone-${level.tone}" cx="14" cy="14" r="${radius}" stroke-dasharray="${dash} ${circumference}"/>`
+    : "";
+  return track + fill;
+}
+
 function render() {
   if (!state) return;
   const now = Date.now();
   const accounts = state.accounts
     .filter((a) => !hidden.has(a.id))
     .sort((a, b) => (PROVIDER_ORDER[a.provider] ?? 9) - (PROVIDER_ORDER[b.provider] ?? 9) || a.createdAt - b.createdAt);
-  badges = accounts.map((a) => badgeFor(accountView(a, state.snapshots, now, now, now + DAY), state.status[a.id], state.seen[a.id]));
+  badges = accounts.map((a) => badgeFor(accountView(a, state.snapshots, now, now, now + DAY), state.status[a.id], state.seen[a.id], now));
 
-  $("rings").innerHTML = badges.map((b, i) => {
-    const dash = (b.fillPct / 100) * CIRCUMFERENCE;
-    const value = b.glyph === "lock" ? LOCK : esc(b.text);
-    const label = [b.name, b.line, b.detail].filter(Boolean).join(". ");
-    return `<button type="button" class="ring tone-${b.tone}" data-index="${i}" aria-label="${esc(label)}">
-        <svg class="ring-svg" viewBox="0 0 40 40" aria-hidden="true">
-          <circle class="ring-track" cx="20" cy="20" r="${RADIUS}"/>
-          ${dash > 0 ? `<circle class="ring-fill" cx="20" cy="20" r="${RADIUS}" stroke-dasharray="${dash} ${CIRCUMFERENCE}"/>` : ""}
-        </svg>
-        <span class="ring-value">${value}</span>
+  $("rings").innerHTML = badges.map((b, i) => `<button type="button" class="ring state-${b.state}" data-index="${i}" aria-label="${esc([b.name, ...b.lines].join(". "))}">
+        <svg class="ring-svg" viewBox="0 0 28 28" aria-hidden="true">${ring("session", OUTER, b.session)}${ring("week", INNER, b.week)}</svg>
         <span class="ring-label">${esc(initials(b.name))}</span>
-      </button>`;
-  }).join("");
+      </button>`).join("");
   // The window hugs the pill so the meter takes no more of the screen edge than it needs.
-  bridge.setHeight(Math.ceil($("pill").getBoundingClientRect().height) + 12);
+  bridge.setHeight(Math.ceil($("pill").getBoundingClientRect().height) + 8);
 }
 
-function showCard(ring) {
-  const b = badges[Number(ring.dataset.index)];
+function showCard(el) {
+  const b = badges[Number(el.dataset.index)];
   if (!b) return;
-  $("card-name").textContent = b.name;
-  $("card-line").textContent = b.line;
-  $("card-detail").textContent = b.detail ?? "";
+  // The colored circle before each line matches its ring: session outside, week inside.
+  const keys = b.state === "ok" ? ["key-session", "key-week"] : ["key-none", "key-none"];
+  $("card").innerHTML = `<p class="card-name">${esc(b.name)}</p>${b.lines.map((line, i) => `<p class="card-line ${keys[i]}">${esc(line)}</p>`).join("")}`;
   $("card").hidden = false;
-  const r = ring.getBoundingClientRect();
+  const r = el.getBoundingClientRect();
   const card = $("card").getBoundingClientRect();
-  $("card").style.top = `${Math.max(0, r.top + 20 - card.height / 2)}px`;
+  $("card").style.top = `${Math.max(0, r.top + 14 - card.height / 2)}px`;
 }
 
 async function load() {

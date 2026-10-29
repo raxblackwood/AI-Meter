@@ -62,11 +62,12 @@ The app does not sign in to Google itself: tools that reuse Antigravity's Google
 
 ## The floating meter
 
-A slim pill sits on the right edge of the screen, above other windows, with one ring per account showing what is left in its current 5-hour window:
-indigo with the percent left, amber at 25% or less, red at 5% or less, green "100" when no window is running, a red padlock while locked, and "?" when it cannot be read.
-Under each ring is a short label (C1 for Claude 1, A1 for Antigravity 1).
+A slim pill sits on the right edge of the screen, above other windows, with two rings per account:
+the **outer ring** is what is left of the current 5-hour session (indigo), the **inner ring** what is left of the week (lavender).
+A ring turns amber at 25% or less and red at 5% or less; a locked account shows two red tracks, and a level that is not reported (Antigravity's weekly use until it locks) shows a dashed track.
+Under each pair is a short label (C1 for Claude 1, A1 for Antigravity 1).
 
-- Hover a ring for its name, time left and weekly use; click it to open the dashboard.
+- Hover a pair for the account name, session time left and weekly use; click it to open the dashboard.
 - Drag the dots at the top to move the meter up or down the edge.
 - Right-click for the menu: open the dashboard, **Show in meter** (choose accounts), start with Windows, quit.
 
