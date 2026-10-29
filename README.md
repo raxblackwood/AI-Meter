@@ -60,6 +60,16 @@ It finds the `language_server` process, takes its CSRF token from the process ar
 
 The app does not sign in to Google itself: tools that reuse Antigravity's Google sign-in have led to accounts being suspended.
 
+## Taskbar badges
+
+Each account also gets a small icon next to the clock showing what is left in its current 5-hour window:
+blue with the percent left, amber at 25% or less, red at 5% or less, green "100" when no window is running, a red padlock while locked, and "?" when it cannot be read.
+Hover for the details; click to open the dashboard.
+The tray menu has **Show in taskbar** to choose which accounts get an icon.
+
+Windows 11 puts new icons in the hidden-icons area (the ^ arrow).
+Drag them onto the taskbar, or turn them on in Settings > Personalization > Taskbar > Other system tray icons (they are listed as "Electron" while the app runs from source).
+
 ## Accounts
 
 Each row has a menu with **Rename** and **Remove**.

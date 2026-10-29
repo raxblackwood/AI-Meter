@@ -1,12 +1,13 @@
 // Desktop app: runs the collectors and the local server, shows the dashboard in a window, and lives
-// in the system tray so readings keep coming while the window is closed.
-import { app, BrowserWindow, dialog, Menu, nativeImage, shell, Tray } from "electron";
+// in the system tray (one usage badge per account) so readings keep coming while the window is closed.
+import { app, BrowserWindow, dialog, nativeImage, shell } from "electron";
 import { existsSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createApp, DEFAULT_PORT } from "../server.js";
 import { createHub } from "../src/hub.js";
 import { claudeClient } from "./claude-client.js";
+import { createTaskbar } from "./taskbar.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || DEFAULT_PORT;
@@ -14,7 +15,7 @@ const URL = `http://127.0.0.1:${PORT}`;
 const startHidden = process.argv.includes("--hidden");
 
 let win = null;
-let tray = null;
+let taskbar = null;
 let quitting = false;
 
 if (!app.requestSingleInstanceLock()) {
@@ -77,30 +78,23 @@ function createWindow() {
   });
 }
 
-function buildTrayMenu() {
-  tray.setContextMenu(Menu.buildFromTemplate([
-    { label: "Open dashboard", click: showWindow },
-    { type: "separator" },
+/** Menu entries shared by every tray icon; the taskbar adds its "Show in taskbar" checklist between them. */
+const trayMenuItems = {
+  top: () => [{ label: "Open dashboard", click: showWindow }, { type: "separator" }],
+  bottom: (refresh) => [
     {
       label: "Start with Windows",
       type: "checkbox",
       checked: startsWithWindows(),
       click: (item) => {
         app.setLoginItemSettings(loginItemOptions(item.checked));
-        buildTrayMenu();
+        refresh();
       },
     },
     { type: "separator" },
     { label: "Quit", click: () => { quitting = true; app.quit(); } },
-  ]));
-}
-
-function createTray() {
-  tray = new Tray(nativeImage.createFromPath(join(HERE, "tray.png")));
-  tray.setToolTip("AI Usage");
-  tray.on("click", showWindow);
-  buildTrayMenu();
-}
+  ],
+};
 
 async function start() {
   app.setAppUserModelId("com.raxblackwood.ai-usage-dashboard");
@@ -116,12 +110,19 @@ async function start() {
   server.listen(PORT, "127.0.0.1", () => {
     hub.start();
     enableAutostartOnce();
-    createTray();
+    taskbar = createTaskbar({
+      hub,
+      appIcon: nativeImage.createFromPath(join(HERE, "tray.png")),
+      onClick: showWindow,
+      menuItems: trayMenuItems,
+    });
+    taskbar.start();
     createWindow();
   });
   app.on("before-quit", () => {
     quitting = true;
     hub.stop();
+    taskbar?.stop();
     server.close();
   });
 }
