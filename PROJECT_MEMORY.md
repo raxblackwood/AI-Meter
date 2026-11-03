@@ -18,7 +18,7 @@ Product name: **AI Meter** (renamed 2026-10-29; the vault project and repository
 - **Status**: #project #active
 - **Origin idea**: [[ai-usage-dashboard]]
 - **Sub-Documents**: [[AI Usage Dashboard - Architecture|Architecture]] | [[AI Usage Dashboard - Decisions|Decisions]] | [[AI Usage Dashboard - Identity|Project Identity]]
-- **Repository**: `E:\CODES\ai-usage-dashboard`, GitHub https://github.com/raxblackwood/Ai-usage-dashboard (branch `main`)
+- **Repository**: `E:\CODES\ai-usage-dashboard`, GitHub https://github.com/raxblackwood/AI-Meter (branch `main`)
 
 ## Current Status (2026-10-28)
 
