@@ -45,10 +45,11 @@ function call(method, path, body, headers = {}) {
       const chunks = [];
       res.on("data", (c) => chunks.push(c));
       res.on("end", () => {
-        const text = Buffer.concat(chunks).toString();
+        const buf = Buffer.concat(chunks);
+        const text = buf.toString();
         let json = null;
         try { json = JSON.parse(text); } catch { /* static file */ }
-        resolve({ status: res.statusCode, body: json, text });
+        resolve({ status: res.statusCode, headers: res.headers, body: json, text, buffer: buf });
       });
     });
     req.on("error", reject);
@@ -170,4 +171,16 @@ test("static files are served and path traversal is refused", async () => {
   assert.equal(page.status, 200);
   assert.match(page.text, /<title>AI Meter<\/title>/);
   assert.equal((await call("GET", "/..%2Fserver.js")).status, 404);
+});
+
+test("extension download and open-folder endpoints work", async () => {
+  const download = await call("GET", "/api/extension/download");
+  assert.equal(download.status, 200);
+  assert.equal(download.headers["content-type"], "application/zip");
+  assert.match(download.headers["content-disposition"], /ai-meter-extension\.zip/);
+  assert.ok(download.buffer.length > 1000);
+
+  const openFolder = await call("POST", "/api/extension/open-folder");
+  assert.equal(openFolder.status, 200);
+  assert.deepEqual(JSON.parse(openFolder.text), { ok: true });
 });

@@ -8,6 +8,7 @@ import http from "node:http";
 import https from "node:https";
 
 const STATUS_PATH = "/exa.language_server_pb.LanguageServerService/GetUserStatus";
+const QUOTA_SUMMARY_PATH = "/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary";
 const STATUS_BODY = JSON.stringify({ metadata: { ideName: "antigravity", extensionName: "antigravity", locale: "en" } });
 const REQUEST_TIMEOUT_MS = 4000;
 const SESSION_MS = 5 * 60 * 60 * 1000;
@@ -74,12 +75,13 @@ export async function findLanguageServers() {
   return servers;
 }
 
-function post(lib, port, csrfToken) {
+function post(lib, port, path, body, csrfToken) {
   return new Promise((resolve, reject) => {
+    const payload = typeof body === "string" ? body : JSON.stringify(body ?? {});
     const req = lib.request({
       host: "127.0.0.1",
       port,
-      path: STATUS_PATH,
+      path,
       method: "POST",
       // The language server uses a self-signed certificate on loopback.
       rejectUnauthorized: false,
@@ -88,28 +90,28 @@ function post(lib, port, csrfToken) {
         "content-type": "application/json",
         "connect-protocol-version": "1",
         "x-codeium-csrf-token": csrfToken,
-        "content-length": Buffer.byteLength(STATUS_BODY),
+        "content-length": Buffer.byteLength(payload),
       },
     }, (res) => {
       const chunks = [];
       res.on("data", (c) => chunks.push(c));
       res.on("end", () => {
-        if (res.statusCode !== 200) return reject(new Error(`GetUserStatus returned ${res.statusCode}`));
+        if (res.statusCode !== 200) return reject(new Error(`${path} returned ${res.statusCode}`));
         try {
           resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")));
         } catch {
-          reject(new Error("GetUserStatus returned invalid JSON"));
+          reject(new Error(`${path} returned invalid JSON`));
         }
       });
     });
-    req.on("timeout", () => req.destroy(new Error("GetUserStatus timed out")));
+    req.on("timeout", () => req.destroy(new Error(`${path} timed out`)));
     req.on("error", reject);
-    req.end(STATUS_BODY);
+    req.end(payload);
   });
 }
 
 /**
- * Calls GetUserStatus. The server listens on several ports with different protocols, so each port is
+ * Calls GetUserStatus and RetrieveUserQuotaSummary. The server listens on several ports with different protocols, so each port is
  * tried over HTTPS and then plain HTTP. The endpoint that answers is remembered on `server` and tried first.
  */
 export async function fetchUserStatus(server) {
@@ -118,8 +120,15 @@ export async function fetchUserStatus(server) {
   let firstError = null;
   for (const endpoint of candidates) {
     try {
-      const result = await post(endpoint.scheme === "https" ? https : http, endpoint.port, server.csrfToken);
+      const lib = endpoint.scheme === "https" ? https : http;
+      const result = await post(lib, endpoint.port, STATUS_PATH, STATUS_BODY, server.csrfToken);
       server.endpoint = endpoint;
+      try {
+        const quotaSummary = await post(lib, endpoint.port, QUOTA_SUMMARY_PATH, "{}", server.csrfToken);
+        result.quotaSummary = quotaSummary?.response ?? quotaSummary;
+      } catch {
+        // Soft fail if RetrieveUserQuotaSummary is not supported on older language servers
+      }
       return result;
     } catch (err) {
       firstError ??= err;
@@ -146,8 +155,85 @@ function classify(bucket, now) {
 export function toReading(status, now) {
   const user = status?.userStatus;
   if (!user?.email) return null;
+
+  // Extract prompt and flow credits if reported by Antigravity planStatus
+  const planStatus = user.planStatus;
+  const promptCredits = planStatus?.availablePromptCredits;
+  const flowCredits = planStatus?.availableFlowCredits;
+  const credits = (Number.isFinite(promptCredits) || Number.isFinite(flowCredits))
+    ? {
+        prompt: Number.isFinite(promptCredits) ? promptCredits : null,
+        flow: Number.isFinite(flowCredits) ? flowCredits : null,
+      }
+    : null;
+
+  // If authoritative QuotaSummary is available from RetrieveUserQuotaSummary, use it directly
+  if (status?.quotaSummary?.groups) {
+    let geminiWeekly = null;
+    let gemini5h = null;
+    let thirdPartyWeekly = null;
+    let thirdParty5h = null;
+
+    for (const group of status.quotaSummary.groups) {
+      const isGemini = /gemini/i.test(group.displayName ?? "");
+      for (const bucket of group.buckets ?? []) {
+        const isWeekly = bucket.window === "weekly" || /weekly/i.test(bucket.bucketId ?? "") || /weekly/i.test(bucket.displayName ?? "");
+        const resetsAt = Date.parse(bucket.resetTime ?? "");
+        const remaining = Math.min(1, Math.max(0, bucket.remainingFraction ?? 0));
+        const usedPct = Math.round((1 - remaining) * 1000) / 10;
+        const info = { usedPct, remainingPct: Math.round(remaining * 1000) / 10, resetsAt: Number.isFinite(resetsAt) ? resetsAt : null };
+
+        if (isGemini) {
+          if (isWeekly) geminiWeekly = info;
+          else gemini5h = info;
+        } else {
+          if (isWeekly) thirdPartyWeekly = info;
+          else thirdParty5h = info;
+        }
+      }
+    }
+
+    const weekly = geminiWeekly?.resetsAt ? { usedPct: geminiWeekly.usedPct, resetsAt: geminiWeekly.resetsAt } : null;
+
+    // Active session: Gemini 5h is primary. If Gemini 5h is completely unused (usedPct <= 0),
+    // but thirdParty 5h is active, fall back to thirdParty 5h.
+    let session = null;
+    if (gemini5h && gemini5h.usedPct > 0 && gemini5h.resetsAt && gemini5h.resetsAt > now) {
+      session = { usedPct: gemini5h.usedPct, resetsAt: gemini5h.resetsAt };
+    } else if (thirdParty5h && thirdParty5h.usedPct > 0 && thirdParty5h.resetsAt && thirdParty5h.resetsAt > now) {
+      session = { usedPct: thirdParty5h.usedPct, resetsAt: thirdParty5h.resetsAt };
+    }
+
+    // Third-party lockout: only locked if remaining is 0 and resetsAt is in the future
+    let thirdParty = null;
+    if (thirdPartyWeekly && thirdPartyWeekly.remainingPct <= 0 && thirdPartyWeekly.resetsAt && thirdPartyWeekly.resetsAt > now) {
+      thirdParty = { usedPct: 100, resetsAt: thirdPartyWeekly.resetsAt };
+    } else if (thirdParty5h && thirdParty5h.remainingPct <= 0 && thirdParty5h.resetsAt && thirdParty5h.resetsAt > now) {
+      thirdParty = { usedPct: 100, resetsAt: thirdParty5h.resetsAt };
+    }
+
+    const flash = gemini5h ? { usedPct: gemini5h.usedPct, resetsAt: gemini5h.resetsAt } : null;
+
+    return {
+      at: now,
+      email: user.email.toLowerCase(),
+      plan: user.userTier?.name ?? null,
+      session,
+      weekly,
+      flash,
+      credits,
+      thirdParty,
+      models: {
+        gemini: { weekly: geminiWeekly, session: gemini5h },
+        claude: { weekly: thirdPartyWeekly, session: thirdParty5h },
+      },
+    };
+  }
+
+  // Fallback: parse clientModelConfigs from GetUserStatus
   const buckets = { premium: null, flash: null };
   for (const model of user.cascadeModelConfigData?.clientModelConfigs ?? []) {
+    if (model.disabled) continue;
     const quota = model.quotaInfo;
     const resetsAt = Date.parse(quota?.resetTime ?? "");
     if (!Number.isFinite(resetsAt)) continue;
@@ -155,18 +241,45 @@ export function toReading(status, now) {
     const key = /flash/i.test(model.label ?? "") ? "flash" : "premium";
     const current = buckets[key];
     if (!current || remaining < current.remaining || (remaining === current.remaining && resetsAt > current.resetsAt)) {
-      buckets[key] = { remaining, resetsAt };
+      buckets[key] = { remaining, resetsAt, label: model.label };
     }
   }
+
+  // Flash window: if Flash models exist, track their usage level.
+  let flashWindow = null;
+  if (buckets.flash) {
+    const usedPct = Math.round((1 - buckets.flash.remaining) * 1000) / 10;
+    flashWindow = { usedPct, resetsAt: buckets.flash.resetsAt };
+  }
+
   const premium = classify(buckets.premium, now);
-  const flash = classify(buckets.flash, now);
+  const flashClassified = classify(buckets.flash, now);
+
+  // Weekly lockout:
+  // If premium models have a reset days away, check whether the account still has Flash or credits.
+  // When Flash is usable or credits exist, do not lock out the whole account; note it as a 3rd-party lockout.
+  let weekly = premium.weekly;
+  let thirdParty = null;
+  if (weekly) {
+    const hasRemainingFlash = buckets.flash && buckets.flash.remaining > 0;
+    const hasCredits = credits && ((credits.prompt ?? 0) > 0 || (credits.flow ?? 0) > 0);
+    if (hasRemainingFlash || hasCredits) {
+      thirdParty = weekly;
+      weekly = null;
+    }
+  }
+
+  const session = premium.session ?? (weekly ? null : flashClassified.session);
+
   return {
     at: now,
     email: user.email.toLowerCase(),
     plan: user.userTier?.name ?? null,
-    session: premium.session,
-    weekly: premium.weekly,
-    flash: flash.session ?? flash.weekly,
+    session,
+    weekly,
+    flash: flashClassified.session ?? flashClassified.weekly ?? flashWindow,
+    credits,
+    thirdParty,
   };
 }
 

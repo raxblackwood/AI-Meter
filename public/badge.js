@@ -54,14 +54,28 @@ export function badgeFor(view, status, seen, now = Date.now()) {
   const open = view.session.state === "open";
   const session = level(open ? 100 - view.session.usedPct : 100);
   const week = level(view.weekly?.resetsAt ? 100 - view.weekly.usedPct : null);
+  const lines = [
+    open ? `Session: ${session.leftPct}% left until ${when(view.session.resetsAt, now)}` : "Session: ready, none running",
+    week.leftPct === null ? "Week: not reported" : `Week: ${week.leftPct}% left, resets ${when(view.weekly.resetsAt, now)}`,
+  ];
+  if (view.credits) {
+    const parts = [];
+    if (view.credits.prompt !== null) parts.push(`${view.credits.prompt} prompt`);
+    if (view.credits.flow !== null) parts.push(`${view.credits.flow} flow`);
+    if (parts.length) lines.push(`Credits: ${parts.join(", ")}`);
+  }
+  if (view.thirdParty) {
+    lines.push(`Claude locked until ${when(view.thirdParty.resetsAt, now)}`);
+  } else if (view.models?.claude?.weekly && view.models?.claude?.session) {
+    const s = Math.round(view.models.claude.session.remainingPct);
+    const w = Math.round(view.models.claude.weekly.remainingPct);
+    lines.push(`Claude: ${s}% session · ${w}% week`);
+  }
   return {
     name,
     state: "ok",
     session,
     week,
-    lines: [
-      open ? `Session: ${session.leftPct}% left until ${when(view.session.resetsAt, now)}` : "Session: ready, none running",
-      week.leftPct === null ? "Week: not reported" : `Week: ${week.leftPct}% left, resets ${when(view.weekly.resetsAt, now)}`,
-    ],
+    lines,
   };
 }

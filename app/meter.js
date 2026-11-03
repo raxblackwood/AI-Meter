@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { readAccounts } from "../src/store.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const WIDTH = 300;
+const WIDTH = 380;
 const MIN_HEIGHT = 48;
 const EDGE_GAP = 0;
 
@@ -38,8 +38,13 @@ export function createMeter({ url, userData, onOpen, menuItems }) {
 
   /** Keeps the window against the right edge, inside the work area, at the saved height on screen. */
   function place(y) {
+    if (!win) return;
     const area = screen.getPrimaryDisplay().workArea;
-    const top = Math.min(Math.max(y ?? settings.read().y ?? area.y + Math.round((area.height - height) / 2), area.y), area.y + area.height - height);
+    const defaultY = area.y + Math.round((area.height - height) / 2);
+    const savedY = settings.read().y;
+    // Prefer savedY only when it sits safely within the visible work area, avoiding taskbar occlusion
+    const candidateY = y ?? (savedY !== undefined && savedY >= area.y && savedY <= area.y + area.height - height - 40 ? savedY : defaultY);
+    const top = Math.min(Math.max(candidateY, area.y), area.y + area.height - height);
     win.setBounds({ x: area.x + area.width - WIDTH - EDGE_GAP, y: Math.round(top), width: WIDTH, height });
   }
 
@@ -65,7 +70,9 @@ export function createMeter({ url, userData, onOpen, menuItems }) {
       win.hide();
       return;
     }
+    place();
     win.showInactive();
+    win.setAlwaysOnTop(true, "floating");
     // Click-through with pointer forwarding has to be set on the shown window; set before showing,
     // Windows drops the forwarding and the meter stops reacting to the mouse.
     win.setIgnoreMouseEvents(true, { forward: true });
@@ -83,6 +90,7 @@ export function createMeter({ url, userData, onOpen, menuItems }) {
     Menu.buildFromTemplate([
       ...menuItems.top(),
       { label: "Hide meter", click: () => setVisible(false) },
+      { label: "Center on screen", click: () => { settings.write({ y: null }); place(); } },
       { type: "separator" },
       ...(checklist.length ? [{ label: "Show in meter", submenu: checklist }, { type: "separator" }] : []),
       ...menuItems.bottom(),
@@ -114,7 +122,12 @@ export function createMeter({ url, userData, onOpen, menuItems }) {
     place();
     win.loadURL(url);
     win.once("ready-to-show", () => {
-      if (isVisible()) win.showInactive();
+      if (isVisible()) {
+        place();
+        win.showInactive();
+        win.setAlwaysOnTop(true, "floating");
+        win.setIgnoreMouseEvents(true, { forward: true });
+      }
     });
 
     screen.on("display-metrics-changed", () => place());
@@ -125,7 +138,7 @@ export function createMeter({ url, userData, onOpen, menuItems }) {
   ipcMain.on("meter:height", (_event, px) => {
     if (!win || !Number.isFinite(px)) return;
     height = Math.max(MIN_HEIGHT, Math.min(Math.round(px), workArea().height));
-    place(win.getBounds().y);
+    place();
   });
   ipcMain.on("meter:open", () => onOpen());
   ipcMain.on("meter:menu", () => showMenu());

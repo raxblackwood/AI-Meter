@@ -2,6 +2,7 @@
 // Local-only HTTP server: serves the dashboard and a small JSON API over the data files, and receives
 // Claude readings from the browser extension. The desktop app (app/main.js) runs it; `npm start` runs it
 // without the tray.
+import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
@@ -9,6 +10,7 @@ import { dirname, extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHub } from "./src/hub.js";
 import { PROVIDERS, readAccounts, readReadings, readSeen, updateAccount } from "./src/store.js";
+import { packZip } from "./src/zip.js";
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(ROOT, "public");
@@ -107,6 +109,21 @@ async function handleApi(req, res, url, hub, meter) {
     if (typeof body.visible !== "boolean") throw new HttpError(400, "visible must be true or false");
     meter.setVisible(body.visible);
     return sendJson(res, 200, { visible: meter.isVisible() });
+  }
+  if (req.method === "GET" && url.pathname === "/api/extension/download") {
+    const zip = packZip(EXTENSION_DIR);
+    res.writeHead(200, {
+      "content-type": "application/zip",
+      "content-disposition": 'attachment; filename="ai-meter-extension.zip"',
+      "content-length": zip.length,
+      "cache-control": "no-cache",
+    });
+    return res.end(zip);
+  }
+  if (req.method === "POST" && url.pathname === "/api/extension/open-folder") {
+    const cmd = process.platform === "win32" ? "explorer.exe" : process.platform === "darwin" ? "open" : "xdg-open";
+    execFile(cmd, [EXTENSION_DIR], () => {});
+    return sendJson(res, 200, { ok: true });
   }
   if (req.method === "POST" && url.pathname === "/api/accounts/claude/sign-in") {
     hub.startSignIn(null);

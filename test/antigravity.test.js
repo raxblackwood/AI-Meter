@@ -18,11 +18,12 @@ const tempDir = () => {
 after(() => dirs.forEach((d) => rmSync(d, { recursive: true, force: true })));
 
 // Shape of a GetUserStatus response, trimmed to the fields the collector reads.
-function status(email, models) {
+function status(email, models, planStatus = null) {
   return {
     userStatus: {
       email,
       userTier: { name: "Google AI Pro" },
+      planStatus,
       cascadeModelConfigData: { clientModelConfigs: models.map(([label, quotaInfo]) => ({ label, quotaInfo })) },
     },
   };
@@ -66,6 +67,68 @@ test("a full quota is recorded as no open window", () => {
   assert.equal(r.session, null);
   assert.equal(r.weekly, null);
   assert.equal(toReading({ userStatus: {} }, NOW), null);
+});
+
+test("credits and Flash quota keep Antigravity usable when 3rd-party models are locked out", () => {
+  const r = toReading(status("me@example.com", [
+    ["Gemini 3.8 Flash (High)", { remainingFraction: 1, resetTime: iso(NOW + 2 * HOUR) }],
+    ["Claude Opus 4.6 (Thinking)", { resetTime: iso(NOW + 50 * HOUR) }],
+  ], { availablePromptCredits: 500, availableFlowCredits: 100 }), NOW);
+  assert.equal(r.session, null);
+  assert.equal(r.weekly, null);
+  assert.deepEqual(r.flash, { usedPct: 0, resetsAt: NOW + 2 * HOUR });
+  assert.deepEqual(r.credits, { prompt: 500, flow: 100 });
+  assert.deepEqual(r.thirdParty, { usedPct: 100, resetsAt: NOW + 50 * HOUR });
+
+  const ag1 = { id: "ag1", provider: "antigravity", name: "Antigravity 1" };
+  const v = accountView(ag1, [{ accountId: "ag1", at: NOW, ...r }], NOW, NOW - 24 * HOUR, NOW + 6 * 24 * HOUR);
+  assert.equal(v.exhausted, false);
+  assert.equal(v.session.state, "idle");
+  assert.deepEqual(v.credits, { prompt: 500, flow: 100 });
+  assert.deepEqual(v.thirdParty, { usedPct: 100, resetsAt: NOW + 50 * HOUR });
+
+  const s = summarize([v], NOW);
+  assert.equal(s.suggestion.kind, "start-fresh");
+  assert.equal(s.suggestion.view.account.id, "ag1");
+});
+
+test("RetrieveUserQuotaSummary accurately maps Gemini and Claude limits without false lockouts", () => {
+  const statusWithSummary = {
+    userStatus: {
+      email: "user@example.com",
+      userTier: { name: "Google AI Pro" },
+      planStatus: { availablePromptCredits: 500, availableFlowCredits: 100 },
+    },
+    quotaSummary: {
+      groups: [
+        {
+          displayName: "Gemini Models",
+          buckets: [
+            { bucketId: "gemini-weekly", window: "weekly", remainingFraction: 0.19, resetTime: iso(NOW + 60 * HOUR) },
+            { bucketId: "gemini-5h", window: "5h", remainingFraction: 0.94, resetTime: iso(NOW + 4 * HOUR) },
+          ],
+        },
+        {
+          displayName: "Claude and GPT models",
+          buckets: [
+            { bucketId: "3p-weekly", window: "weekly", remainingFraction: 0.47, resetTime: iso(NOW + 110 * HOUR) },
+            { bucketId: "3p-5h", window: "5h", remainingFraction: 1, resetTime: iso(NOW + 5 * HOUR) },
+          ],
+        },
+      ],
+    },
+  };
+
+  const r = toReading(statusWithSummary, NOW);
+  assert.equal(r.email, "user@example.com");
+  assert.deepEqual(r.session, { usedPct: 6, resetsAt: NOW + 4 * HOUR });
+  assert.deepEqual(r.weekly, { usedPct: 81, resetsAt: NOW + 60 * HOUR });
+  assert.equal(r.thirdParty, null); // Not locked because remainingFraction is 0.47 > 0
+  assert.deepEqual(r.credits, { prompt: 500, flow: 100 });
+  assert.equal(r.models.gemini.weekly.remainingPct, 19);
+  assert.equal(r.models.gemini.session.remainingPct, 94);
+  assert.equal(r.models.claude.weekly.remainingPct, 47);
+  assert.equal(r.models.claude.session.remainingPct, 100);
 });
 
 test("a locked-out account is not suggested until its lockout ends", () => {

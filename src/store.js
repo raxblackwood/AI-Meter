@@ -116,8 +116,13 @@ function sameWindow(a, b) {
   return a.usedPct === b.usedPct && a.resetsAt === b.resetsAt;
 }
 
+function sameCredits(a, b) {
+  if (!a || !b) return a === b;
+  return a.prompt === b.prompt && a.flow === b.flow;
+}
+
 /**
- * Stores a reading `{ at, session, weekly, flash? }` for an account. Appends to the feed only when the
+ * Stores a reading `{ at, session, weekly, flash?, credits?, thirdParty? }` for an account. Appends to the feed only when the
  * limits changed; always refreshes the last-seen time. Returns true if appended.
  */
 export function recordReading(accountId, reading, dir = dataDir()) {
@@ -126,8 +131,13 @@ export function recordReading(accountId, reading, dir = dataDir()) {
   const prev = latest[accountId];
   const record = { accountId, at: reading.at, session: reading.session ?? null, weekly: reading.weekly ?? null };
   if ("flash" in reading) record.flash = reading.flash ?? null;
+  if ("credits" in reading) record.credits = reading.credits ?? null;
+  if ("thirdParty" in reading) record.thirdParty = reading.thirdParty ?? null;
+  if ("models" in reading) record.models = reading.models ?? null;
   const changed = !prev || !sameWindow(prev.session, record.session)
-    || !sameWindow(prev.weekly, record.weekly) || !sameWindow(prev.flash ?? null, record.flash ?? null);
+    || !sameWindow(prev.weekly, record.weekly) || !sameWindow(prev.flash ?? null, record.flash ?? null)
+    || !sameWindow(prev.thirdParty ?? null, record.thirdParty ?? null)
+    || !sameCredits(prev.credits ?? null, record.credits ?? null);
   if (changed) {
     mkdirSync(dir, { recursive: true });
     appendFileSync(join(dir, READINGS_FILE), JSON.stringify(record) + "\n");

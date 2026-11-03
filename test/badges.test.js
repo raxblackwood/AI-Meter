@@ -33,6 +33,18 @@ test("a locked account empties both rings; an unused one has a full session ring
   // Antigravity reports no weekly percent unless it is locked.
   assert.deepEqual(ready.week, { leftPct: null, tone: "unknown" });
   assert.deepEqual(ready.lines, ["Session: ready, none running", "Week: not reported"]);
+
+  const withCredits = badgeFor(view(ag, [{
+    accountId: "a",
+    at: NOW,
+    session: null,
+    weekly: null,
+    credits: { prompt: 500, flow: 100 },
+    thirdParty: { usedPct: 100, resetsAt: NOW + 30 * HOUR },
+  }]), { state: "ok" }, NOW, NOW);
+  assert.equal(withCredits.state, "ok");
+  assert.equal(withCredits.lines[2], "Credits: 500 prompt, 100 flow");
+  assert.match(withCredits.lines[3], /^Claude locked until /);
 });
 
 test("an account that cannot be read shows empty grey rings", () => {

@@ -59,9 +59,9 @@ function render() {
 function showCard(el) {
   const b = badges[Number(el.dataset.index)];
   if (!b) return;
-  // The colored circle before each line matches its ring: session outside, week inside.
+  // The colored circle before each line matches its ring: session outside, week inside; additional telemetry lines omit the ring dot.
   const keys = b.state === "ok" ? ["key-session", "key-week"] : ["key-none", "key-none"];
-  $("card").innerHTML = `<p class="card-name">${esc(b.name)}</p>${b.lines.map((line, i) => `<p class="card-line ${keys[i]}">${esc(line)}</p>`).join("")}`;
+  $("card").innerHTML = `<p class="card-name">${esc(b.name)}</p>${b.lines.map((line, i) => `<p class="card-line ${keys[i] ?? "key-none"}">${esc(line)}</p>`).join("")}`;
   $("card").hidden = false;
   const r = el.getBoundingClientRect();
   const card = $("card").getBoundingClientRect();

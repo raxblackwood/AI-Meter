@@ -43,10 +43,11 @@ Claude limits are shared by the desktop app, claude.ai and the phone, so they ar
 A small browser extension in `extension/` does this with the claude.ai sign-in you already have in your browser, so there is no password to enter.
 Every 3 minutes it reads the numbers behind claude.ai's Settings > Usage page and sends them only to this app on 127.0.0.1.
 
-To connect, click **Add Claude account** in the app, or:
+To connect, click **Add Claude account** in the app to download the pre-packaged zip or open the local folder directly.
+Alternatively:
 
 1. In Chrome or Edge, open `chrome://extensions` (or `edge://extensions`) and turn on Developer mode.
-2. Click **Load unpacked** and choose the `extension` folder of this repository.
+2. Click **Load unpacked** and choose the `extension` folder of this repository (or unzip the downloaded package).
 3. Be signed in at claude.ai in that browser. The account appears within a minute.
 
 Each browser profile reports the Claude account it is signed in to, so for more Claude accounts, load the extension in each profile.
@@ -58,13 +59,13 @@ Once published, put the store link in `package.json` under `config.chromeWebStor
 
 ## Antigravity accounts: automatic
 
-While Antigravity is open, the app reads its quota once a minute from Antigravity's own local language server, the same source as the IDE quota page.
-It finds the `language_server` process, takes its CSRF token from the process arguments (kept in memory only), looks up the localhost ports it listens on, and calls `GetUserStatus`.
+While Antigravity is open, the app reads its quota once a minute from Antigravity's own local language server, matching the exact numbers on the IDE quota page.
+It finds the `language_server` process, takes its CSRF token from the process arguments (kept in memory only), looks up the localhost ports it listens on, and calls `RetrieveUserQuotaSummary` (falling back to `GetUserStatus`).
 
-- Only the signed-in account is reported, and each new email becomes its own row.
-  An account's quota only drops while you use it, which is when it is signed in, so every account stays tracked; the others count down to their known reset times.
-- Claude, GPT-OSS and other non-Flash models drive the main bar; Flash models show as a thin second bar.
-- A reset more than about 5 hours away is shown as a weekly lockout.
+- Both Gemini 5-hour and weekly limits are mapped directly to the meter's rings and schedule board.
+- Monthly prompt credits, flow credits, and 3rd-party model access (Claude, GPT-OSS) are tracked in real-time.
+- Only the signed-in account is actively sampled, and each new email becomes its own row.
+  An account's quota drops while you use it, so every account stays tracked; other accounts count down to their known reset times.
 
 The app does not sign in to Google itself: tools that reuse Antigravity's Google sign-in have led to accounts being suspended.
 

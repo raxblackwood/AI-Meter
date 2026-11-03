@@ -123,19 +123,31 @@ export function accountView(account, allSnapshots, now, spanStart, spanEnd) {
     session = { state: "idle", lastResetAt: lastGroup ? lastGroup.resetsAt : null };
   }
 
-  const lastWeekly = [...snapshots].reverse().find((s) => s.weekly);
+  const latestSnapshot = snapshots[snapshots.length - 1];
   let weekly = null;
-  if (lastWeekly?.weekly.resetsAt > now) {
-    weekly = { usedPct: lastWeekly.weekly.usedPct, resetsAt: lastWeekly.weekly.resetsAt, seenAt: lastWeekly.at };
-  } else if (lastWeekly && anchored) {
-    // Claude always reports a weekly window, so a passed reset means a new week has begun.
-    weekly = { usedPct: 0, resetsAt: null, seenAt: lastWeekly.at };
+  if (latestSnapshot?.weekly && latestSnapshot.weekly.resetsAt > now) {
+    weekly = { usedPct: latestSnapshot.weekly.usedPct, resetsAt: latestSnapshot.weekly.resetsAt, seenAt: latestSnapshot.at };
+  } else if (anchored) {
+    const lastWeekly = [...snapshots].reverse().find((s) => s.weekly);
+    if (lastWeekly?.weekly.resetsAt > now) {
+      weekly = { usedPct: lastWeekly.weekly.usedPct, resetsAt: lastWeekly.weekly.resetsAt, seenAt: lastWeekly.at };
+    } else if (lastWeekly) {
+      weekly = { usedPct: 0, resetsAt: null, seenAt: lastWeekly.at };
+    }
   }
 
   // Antigravity Flash models have their own quota; shown as a secondary bar only.
   const lastFlash = [...snapshots].reverse().find((s) => s.flash !== undefined)?.flash;
-  const flash = lastFlash && lastFlash.resetsAt > now ? lastFlash : null;
-  const exhausted = Boolean(weekly && weekly.usedPct >= 100);
+  const flash = lastFlash && (lastFlash.resetsAt > now || lastFlash.usedPct === 0) ? lastFlash : null;
+
+  const lastCredits = [...snapshots].reverse().find((s) => s.credits !== undefined)?.credits ?? null;
+  const lastThirdParty = [...snapshots].reverse().find((s) => s.thirdParty !== undefined)?.thirdParty;
+  const thirdParty = lastThirdParty && lastThirdParty.resetsAt > now ? lastThirdParty : null;
+  const lastModels = [...snapshots].reverse().find((s) => s.models !== undefined)?.models ?? null;
+
+  const hasCredits = Boolean(lastCredits && ((lastCredits.prompt ?? 0) > 0 || (lastCredits.flow ?? 0) > 0));
+  const hasFlash = Boolean(flash && (100 - flash.usedPct) > 0);
+  const exhausted = Boolean(weekly && weekly.usedPct >= 100 && !hasFlash && !hasCredits);
 
   const calibration = calibrate(snapshots);
   const sessionsLeft = calibration.ready && weekly
@@ -152,7 +164,20 @@ export function accountView(account, allSnapshots, now, spanStart, spanEnd) {
     }));
   windows.push(...planWindows({ session, weekly, exhausted, calibration, sessionsLeft, now, spanEnd }));
 
-  return { account, session, weekly, exhausted, flash, calibration, sessionsLeft, windows, lastSeenAt: snapshots.at(-1)?.at ?? null };
+  return {
+    account,
+    session,
+    weekly,
+    exhausted,
+    flash,
+    credits: lastCredits,
+    thirdParty,
+    models: lastModels,
+    calibration,
+    sessionsLeft,
+    windows,
+    lastSeenAt: snapshots.at(-1)?.at ?? null,
+  };
 }
 
 /**

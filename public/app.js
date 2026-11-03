@@ -110,25 +110,25 @@ function renderRemoved() {
 function renderStatus(now) {
   const alerts = [];
   if (loadError) alerts.push(`Cannot reach the dashboard: ${loadError}`);
-  if (state.connector.error) alerts.push(`The browser extension could not read claude.ai: ${state.connector.error}`);
-  if (state.antigravity.state === "error") alerts.push(`Antigravity could not be read: ${state.antigravity.error}`);
+  if (state?.connector?.error) alerts.push(`The browser extension could not read claude.ai: ${state.connector.error}`);
+  if (state?.antigravity?.state === "error") alerts.push(`Antigravity could not be read: ${state.antigravity.error}`);
   $("alerts").innerHTML = alerts.map((a) => `<p class="alert">${esc(a)}</p>`).join("");
 
-  const latest = Math.max(0, ...Object.values(state.seen));
-  const ag = state.antigravity;
-  const current = state.accounts.find((a) => a.provider === "antigravity" && now - (state.seen[a.id] ?? 0) <= CURRENT_WITHIN_MS);
+  const latest = Math.max(0, ...Object.values(state?.seen ?? {}));
+  const ag = state?.antigravity;
+  const current = state?.accounts?.find((a) => a.provider === "antigravity" && now - (state.seen?.[a.id] ?? 0) <= CURRENT_WITHIN_MS);
   $("live-text").textContent = loadError ? "Offline" : latest ? `Updated ${ago(now - latest)}` : "Waiting for data";
   $("live").classList.toggle("live-off", Boolean(loadError) || !latest);
   $("live").title = [
-    ag.state === "ok" && current ? `Antigravity: reading ${current.email}` : ag.state === "not-running" ? "Antigravity: not open" : "Antigravity: checking",
-    state.signIn.available ? "Claude: read by the app and the browser extension" : "Claude: read by the browser extension",
+    ag?.state === "ok" && current ? `Antigravity: reading ${current.email}` : ag?.state === "not-running" ? "Antigravity: not open" : "Antigravity: checking",
+    state?.signIn?.available ? "Claude: read by the app and the browser extension" : "Claude: read by the browser extension",
   ].join("\n");
-  renderConnect(now);
+  if (state) renderConnect(now);
 
   // The floating meter belongs to the desktop app; in a plain browser tab there is nothing to toggle.
   const toggle = $("meter-toggle");
-  toggle.hidden = !state.meter;
-  if (state.meter) toggle.textContent = state.meter.visible ? "Hide meter" : "Show meter";
+  toggle.hidden = !state?.meter;
+  if (state?.meter) toggle.textContent = state.meter.visible ? "Hide meter" : "Show meter";
 }
 
 function renderConnect(now) {
@@ -232,33 +232,135 @@ function renderHero(summary, views, now) {
     </div>${side.join("")}`;
 }
 
-/** The one number that matters for a row, and a short line of context under it. */
+/** Structured telemetry list with each limit on its own dedicated, scannable line. */
 function rowSummary(v, now) {
-  const status = state.status[v.account.id]?.state;
-  const seen = state.seen[v.account.id];
-  const details = [];
-  let headline;
+  const status = state?.status?.[v.account.id]?.state;
+  const seen = state?.seen?.[v.account.id];
   if (status === "signed-out") {
-    headline = `<span class="row-figure row-figure-muted">Signed out</span>`;
-  } else if (status === "error") {
-    headline = `<span class="row-figure row-figure-muted" title="${esc(state.status[v.account.id].error)}">Not readable</span>`;
-  } else if (!seen) {
-    headline = `<span class="row-figure row-figure-muted">Waiting</span>`;
-  } else if (v.exhausted) {
-    headline = `<span class="row-figure row-figure-danger">Locked</span>`;
-    details.push(`until ${when(v.weekly.resetsAt, now)}`);
-  } else if (v.session.state === "open") {
-    const left = 100 - v.session.usedPct;
-    const tone = left <= 5 ? "row-figure-danger" : left <= 25 ? "row-figure-warn" : "";
-    headline = `<span class="row-figure ${tone}"><span class="num">${pct(left)}</span> left</span>`;
-    details.push(`until ${when(v.session.resetsAt, now)}`);
-  } else {
-    headline = `<span class="row-figure">Ready</span>`;
+    return `<div class="quota-status quota-status-muted">Signed out</div>`;
   }
-  if (!v.exhausted && v.weekly?.resetsAt) details.push(`week ${pct(v.weekly.usedPct)}`);
-  if (v.flash) details.push(`Flash ${pct(100 - v.flash.usedPct)}`);
-  if (v.sessionsLeft !== null) details.push(`${sessions(v.sessionsLeft)} sessions left`);
-  return `${headline}${details.length ? `<span class="row-detail">${details.join(" · ")}</span>` : ""}`;
+  if (status === "error") {
+    const errorMsg = state?.status?.[v.account.id]?.error ?? "Error";
+    return `<div class="quota-status quota-status-danger" title="${esc(errorMsg)}">Not readable</div>`;
+  }
+  if (!seen) {
+    return `<div class="quota-status quota-status-muted">Waiting for data...</div>`;
+  }
+
+  const rows = [];
+
+  if (v.account.provider === "antigravity") {
+    // 1. Gemini Models 5-Hour Session
+    if (v.session.state === "open") {
+      const left = 100 - v.session.usedPct;
+      const tone = left <= 5 ? "quota-val-danger" : left <= 25 ? "quota-val-warn" : "";
+      rows.push(`
+        <div class="quota-row">
+          <span class="quota-label">Gemini 5h</span>
+          <span class="quota-val ${tone}"><span class="num">${pct(left)}</span> left<span class="quota-sub">until ${when(v.session.resetsAt, now)}</span></span>
+        </div>`);
+    } else {
+      rows.push(`
+        <div class="quota-row">
+          <span class="quota-label">Gemini 5h</span>
+          <span class="quota-val"><span class="quota-val-ok">Ready</span><span class="quota-sub">5h on start</span></span>
+        </div>`);
+    }
+
+    // 2. Gemini Models Weekly Limit
+    if (v.weekly?.usedPct !== undefined) {
+      const remaining = 100 - v.weekly.usedPct;
+      const tone = remaining <= 5 ? "quota-val-danger" : remaining <= 25 ? "quota-val-warn" : "";
+      rows.push(`
+        <div class="quota-row">
+          <span class="quota-label">Gemini Wk</span>
+          <span class="quota-val ${tone}"><span class="num">${pct(remaining)}</span> left<span class="quota-sub">resets ${when(v.weekly.resetsAt, now)}</span></span>
+        </div>`);
+    }
+
+    // 3. Claude & GPT Models
+    if (v.thirdParty) {
+      rows.push(`
+        <div class="quota-row">
+          <span class="quota-label">Claude/GPT</span>
+          <span class="quota-val quota-val-danger">Locked<span class="quota-sub">until ${when(v.thirdParty.resetsAt, now)}</span></span>
+        </div>`);
+    } else if (v.models?.claude?.weekly && v.models?.claude?.session) {
+      const s = Math.round(v.models.claude.session.remainingPct);
+      const w = Math.round(v.models.claude.weekly.remainingPct);
+      const tone = w <= 10 ? "quota-val-danger" : w <= 25 ? "quota-val-warn" : "";
+      rows.push(`
+        <div class="quota-row">
+          <span class="quota-label">Claude/GPT</span>
+          <span class="quota-val ${tone}"><span class="num">${s}%</span> 5h · <span class="num">${w}%</span> wk</span>
+        </div>`);
+    } else {
+      rows.push(`
+        <div class="quota-row">
+          <span class="quota-label">Claude/GPT</span>
+          <span class="quota-val"><span class="quota-val-ok">Ready</span></span>
+        </div>`);
+    }
+
+    // 4. Credits
+    if (v.credits) {
+      const prompt = v.credits.prompt ?? 0;
+      const flow = v.credits.flow ?? 0;
+      rows.push(`
+        <div class="quota-row">
+          <span class="quota-label">Credits</span>
+          <span class="quota-val"><span class="num">${prompt}</span> <span class="quota-sub">prompt</span> · <span class="num">${flow}</span> <span class="quota-sub">flow</span></span>
+        </div>`);
+    }
+
+    // 5. Account-level weekly lockout if present
+    if (v.exhausted && v.weekly?.resetsAt) {
+      rows.push(`
+        <div class="quota-row">
+          <span class="quota-label">Account</span>
+          <span class="quota-val quota-val-danger">Locked<span class="quota-sub">until ${when(v.weekly.resetsAt, now)}</span></span>
+        </div>`);
+    }
+  } else {
+    // Claude / standard providers
+    // 1. Session limit
+    if (v.exhausted) {
+      rows.push(`
+        <div class="quota-row">
+          <span class="quota-label">Session</span>
+          <span class="quota-val quota-val-danger">Locked<span class="quota-sub">0% left</span></span>
+        </div>`);
+    } else if (v.session.state === "open") {
+      const left = 100 - v.session.usedPct;
+      const tone = left <= 5 ? "quota-val-danger" : left <= 25 ? "quota-val-warn" : "";
+      rows.push(`
+        <div class="quota-row">
+          <span class="quota-label">Session</span>
+          <span class="quota-val ${tone}"><span class="num">${pct(left)}</span> left<span class="quota-sub">until ${when(v.session.resetsAt, now)}</span></span>
+        </div>`);
+    } else {
+      rows.push(`
+        <div class="quota-row">
+          <span class="quota-label">Session</span>
+          <span class="quota-val"><span class="quota-val-ok">Ready</span><span class="quota-sub">5h on start</span></span>
+        </div>`);
+    }
+
+    // 2. Weekly limit
+    if (v.weekly?.usedPct !== undefined) {
+      const tone = v.weekly.usedPct >= 100 ? "quota-val-danger" : v.weekly.usedPct >= 80 ? "quota-val-warn" : "";
+      const sub = v.sessionsLeft !== null
+        ? `${sessions(v.sessionsLeft)} sessions left`
+        : v.weekly.resetsAt ? `resets ${when(v.weekly.resetsAt, now)}` : "";
+      rows.push(`
+        <div class="quota-row">
+          <span class="quota-label">Weekly</span>
+          <span class="quota-val ${tone}"><span class="num">${pct(v.weekly.usedPct)}</span> used${sub ? `<span class="quota-sub">· ${sub}</span>` : ""}</span>
+        </div>`);
+    }
+  }
+
+  return `<div class="quota-list">${rows.join("")}</div>`;
 }
 
 function rowHead(v, now) {
@@ -414,10 +516,10 @@ async function load() {
   }
   // Do not redraw under the user while they type a new name or use a menu.
   if (state && !renamingId && !openMenuId) render();
-  else if (state) renderStatus(Date.now());
+  else renderStatus(Date.now());
   clearTimeout(refreshTimer);
-  const waiting = !$("connect").hidden || state?.signIn.pending;
-  refreshTimer = setTimeout(load, waiting ? CONNECT_REFRESH_MS : REFRESH_MS);
+  const waiting = !$("connect").hidden || state?.signIn?.pending;
+  refreshTimer = setTimeout(load, loadError ? 5_000 : waiting ? CONNECT_REFRESH_MS : REFRESH_MS);
 }
 
 function showToast(text, undo) {
@@ -484,7 +586,16 @@ async function startSignIn(path) {
   }
 }
 
-$("copy-dir").addEventListener("click", async () => {
+$("open-ext-folder")?.addEventListener("click", async () => {
+  try {
+    await fetch("/api/extension/open-folder", { method: "POST" });
+    showToast("Opened extension folder.", null);
+  } catch {
+    showToast("Could not open folder automatically.", null);
+  }
+});
+
+$("copy-dir")?.addEventListener("click", async () => {
   try {
     await navigator.clipboard.writeText(state.connector.extensionDir);
     showToast("Folder path copied.", null);
