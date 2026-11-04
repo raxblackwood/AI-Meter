@@ -205,6 +205,9 @@ test("custom and codex accounts can be created, updated and automated via webhoo
   const snap1 = state1.snapshots.find((s) => s.accountId === created.id);
   assert.ok(snap1);
   assert.equal(snap1.session.usedPct, 20); // 80% left = 20% used
+  assert.ok(snap1.weekly);
+  assert.equal(snap1.weekly.usedPct, 0);
+  assert.ok(snap1.weekly.resetsAt > Date.now());
 
   // 2. Update usage directly on the account
   const updateRes = await call("POST", `/api/accounts/${created.id}/reading`, {

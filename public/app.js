@@ -7,7 +7,7 @@ const UNDO_MS = 8_000;
 // Time ranges for the schedule. "3d" starts a few hours back so the current window is in view.
 const RANGES = {
   "3d": (now) => [now - 6 * HOUR, now - 6 * HOUR + 3 * DAY],
-  week: (now) => [startOfDay(now) - DAY, startOfDay(now) + 6 * DAY],
+  week: (now) => [startOfDay(now) - DAY, startOfDay(now) + 8 * DAY],
 };
 // Room needed for a bar's start time: "01:10" in full, or just the hour ("01") in narrow bars.
 const FULL_LABEL_PX = 36;
@@ -305,10 +305,17 @@ function rowSummary(v, now) {
     if (v.weekly?.usedPct !== undefined) {
       const remaining = 100 - v.weekly.usedPct;
       const tone = remaining <= 5 ? "quota-val-danger" : remaining <= 25 ? "quota-val-warn" : "";
+      const resetSub = v.weekly.resetsAt ? ` · resets ${when(v.weekly.resetsAt, now)}` : "";
       rows.push(`
         <div class="quota-row">
           <span class="quota-label">Gemini Wk</span>
-          <span class="quota-val ${tone}"><span class="num">${pct(remaining)}</span> left<span class="quota-sub">resets ${when(v.weekly.resetsAt, now)}</span></span>
+          <span class="quota-val ${tone}"><span class="num">${pct(remaining)}</span> left<span class="quota-sub">${resetSub}</span></span>
+        </div>`);
+    } else if (v.weekly?.resetsAt) {
+      rows.push(`
+        <div class="quota-row">
+          <span class="quota-label">Gemini Wk</span>
+          <span class="quota-val"><span class="quota-val-ok">Ready</span><span class="quota-sub"> · resets ${when(v.weekly.resetsAt, now)}</span></span>
         </div>`);
     }
 
@@ -323,10 +330,11 @@ function rowSummary(v, now) {
       const s = Math.round(v.models.claude.session.remainingPct);
       const w = Math.round(v.models.claude.weekly.remainingPct);
       const tone = w <= 10 ? "quota-val-danger" : w <= 25 ? "quota-val-warn" : "";
+      const resetSub = v.models.claude.weekly.resetsAt ? ` · resets ${when(v.models.claude.weekly.resetsAt, now)}` : "";
       rows.push(`
         <div class="quota-row">
           <span class="quota-label">Claude/GPT</span>
-          <span class="quota-val ${tone}"><span class="num">${s}%</span> 5h · <span class="num">${w}%</span> wk</span>
+          <span class="quota-val ${tone}"><span class="num">${s}%</span> 5h · <span class="num">${w}%</span> wk<span class="quota-sub">${resetSub}</span></span>
         </div>`);
     } else {
       rows.push(`
@@ -383,13 +391,20 @@ function rowSummary(v, now) {
     // 2. Weekly limit
     if (v.weekly?.usedPct !== undefined) {
       const tone = v.weekly.usedPct >= 100 ? "quota-val-danger" : v.weekly.usedPct >= 80 ? "quota-val-warn" : "";
-      const sub = v.sessionsLeft !== null
-        ? `${sessions(v.sessionsLeft)} sessions left`
-        : v.weekly.resetsAt ? `resets ${when(v.weekly.resetsAt, now)}` : "";
+      const parts = [];
+      if (v.sessionsLeft !== null) parts.push(`${sessions(v.sessionsLeft)} sessions left`);
+      if (v.weekly.resetsAt) parts.push(`resets ${when(v.weekly.resetsAt, now)}`);
+      const sub = parts.join(" · ");
       rows.push(`
         <div class="quota-row">
           <span class="quota-label">Weekly</span>
           <span class="quota-val ${tone}"><span class="num">${pct(v.weekly.usedPct)}</span> used${sub ? `<span class="quota-sub">· ${sub}</span>` : ""}</span>
+        </div>`);
+    } else if (v.weekly?.resetsAt) {
+      rows.push(`
+        <div class="quota-row">
+          <span class="quota-label">Weekly</span>
+          <span class="quota-val"><span class="quota-val-ok">Ready</span><span class="quota-sub">· resets ${when(v.weekly.resetsAt, now)}</span></span>
         </div>`);
     }
   }
@@ -490,7 +505,7 @@ function renderBoard(views, now, spanStart, spanEnd) {
           ${label}<span class="block-body"><span class="block-fill" style="height:${fill}%"></span></span>
         </span>`;
       }).join("");
-    const weekly = v.weekly?.resetsAt && v.weekly.resetsAt < spanEnd
+    const weekly = v.weekly?.resetsAt && v.weekly.resetsAt >= spanStart && v.weekly.resetsAt <= spanEnd
       ? `<span class="weekly-mark" style="left:${x(v.weekly.resetsAt)}%" title="Weekly reset ${esc(when(v.weekly.resetsAt, now))}"></span>` : "";
     return `${rowHead(v, now)}<div class="track">${lines}${blocks}${weekly}${nowLine}</div>`;
   }).join("");

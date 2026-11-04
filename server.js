@@ -148,7 +148,7 @@ async function handleApi(req, res, url, hub, meter) {
       const session = { usedPct, resetsAt };
       const weekly = body.weeklyUsedPct !== undefined
         ? { usedPct: Math.max(0, Math.min(100, Number(body.weeklyUsedPct))), resetsAt: nowMs + 7 * 86400_000 }
-        : null;
+        : { usedPct: 0, resetsAt: nowMs + 7 * 86400_000 };
       hub.recordAccountReading(account.id, { at: nowMs, session, weekly });
     }
 

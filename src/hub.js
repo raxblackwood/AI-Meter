@@ -175,7 +175,7 @@ export function createHub({ claudeClient = null, antigravity = true, now = Date.
         recordReading(account.id, {
           at: now(),
           session: { usedPct: 0, resetsAt: now() + 3 * 3600_000 },
-          weekly: null,
+          weekly: { usedPct: 0, resetsAt: now() + 7 * 86_400_000 },
         });
       }
       setStatus(account.id, "ok");
