@@ -845,7 +845,6 @@ $("usage-form")?.addEventListener("submit", async (e) => {
     showToast(`Could not update usage: ${err.message}`, null);
   }
 });
-});
 
 $("codex-form")?.addEventListener("submit", async (e) => {
   e.preventDefault();

@@ -12,7 +12,7 @@
   "scripts": {
     "app": "electron .",
     "start": "node server.js",
-    "test": "node --test",
+    "test": "node --check public/app.js && node --check public/meter.js && node --test",
     "pack-extension": "node scripts/pack-extension.mjs",
     "install-shortcut": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install-shortcut.ps1"
   },
