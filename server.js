@@ -98,6 +98,7 @@ async function handleApi(req, res, url, hub, meter) {
       seen: readSeen(),
       status: hub.status,
       antigravity: hub.antigravity,
+      codex: hub.codex,
       connector: { ...hub.connector, extensionDir: EXTENSION_DIR, storeUrl: STORE_URL },
       signIn: { available: hub.canSignIn, ...hub.signIn },
       meter: meter ? { visible: meter.isVisible() } : null,

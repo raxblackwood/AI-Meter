@@ -173,6 +173,13 @@ function renderConnect(now) {
     : ag.state === "not-running" ? "Antigravity is not open right now."
     : "Checking Antigravity...";
   $("antigravity-status").classList.toggle("connect-ok", ag.state === "ok" && Boolean(current));
+
+  const cx = state.codex;
+  if (cx?.available) {
+    $("codex-status").hidden = false;
+    $("codex-status").textContent = `Codex detected locally as ${cx.email} (${cx.plan}). Tracked automatically!`;
+    $("codex-status").classList.add("connect-ok");
+  }
 }
 
 function toggleConnect(open) {

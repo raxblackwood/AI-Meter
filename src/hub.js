@@ -6,7 +6,8 @@
 import { randomUUID } from "node:crypto";
 import { createAntigravityCollector } from "./antigravity.js";
 import { accountEmail, toReading as claudeReading } from "./claude.js";
-import { accountForIdentity, createAccount, readAccounts, recordReading, updateAccount } from "./store.js";
+import { readCodexAuth } from "./codex.js";
+import { accountForIdentity, createAccount, readAccounts, readReadings, readSeen, recordReading, updateAccount } from "./store.js";
 
 const CLAUDE_POLL_MS = 3 * 60_000;
 
@@ -157,19 +158,48 @@ export function createHub({ claudeClient = null, antigravity = true, now = Date.
     return account;
   }
 
+  const codexStatus = { available: false, email: null, plan: null };
+
+  function pollCodex() {
+    const info = readCodexAuth();
+    if (info && info.email) {
+      codexStatus.available = true;
+      codexStatus.email = info.email;
+      codexStatus.plan = info.plan;
+      const account = accountForIdentity("codex", info.email);
+      if (info.plan && account.plan !== info.plan) {
+        updateAccount(account.id, { plan: info.plan });
+      }
+      const seen = readSeen();
+      if (!seen[account.id]) {
+        recordReading(account.id, {
+          at: now(),
+          session: { usedPct: 0, resetsAt: now() + 3 * 3600_000 },
+          weekly: null,
+        });
+      }
+      setStatus(account.id, "ok");
+    } else {
+      codexStatus.available = false;
+    }
+  }
+
   return {
     status,
     connector,
     signIn,
     canSignIn: Boolean(claudeClient),
     antigravity: agCollector.status,
+    codex: codexStatus,
     receiveClaude,
     receiveCustomReading,
     recordAccountReading,
     startSignIn,
     pollAppAccounts,
+    pollCodex,
     start() {
       if (antigravity) agCollector.start();
+      pollCodex();
       if (claudeClient) {
         pollAppAccounts();
         const timer = setInterval(pollAppAccounts, CLAUDE_POLL_MS);
