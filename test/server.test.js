@@ -235,4 +235,15 @@ test("custom and codex accounts can be created, updated and automated via webhoo
   const cursorAcct = state3.accounts.find((a) => a.id === webhookRes.body.accountId);
   assert.ok(cursorAcct);
   assert.equal(cursorAcct.name, "Cursor Pro");
+
+  // 4. Update subscription plan and renewal day
+  const subRes = await call("POST", `/api/accounts/${created.id}/reading`, {
+    subType: "monthly",
+    renewsDay: 6,
+  });
+  assert.equal(subRes.status, 200);
+  const state4 = (await call("GET", "/api/state")).body;
+  const updatedAcct = state4.accounts.find((a) => a.id === created.id);
+  assert.equal(updatedAcct.subType, "monthly");
+  assert.equal(updatedAcct.renewsDay, 6);
 });

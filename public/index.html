@@ -205,11 +205,12 @@
       <div class="board-head">
         <h2 id="board-title">Schedule</h2>
         <div class="segmented" role="radiogroup" aria-label="Time range">
-          <button type="button" role="radio" aria-checked="true" data-range="3d">3 days</button>
-          <button type="button" role="radio" aria-checked="false" data-range="week">Week</button>
+          <button type="button" role="radio" aria-checked="false" data-range="3d">3 days</button>
+          <button type="button" role="radio" aria-checked="true" data-range="week">Week</button>
+          <button type="button" role="radio" aria-checked="false" data-range="month">Month</button>
         </div>
       </div>
-      <div class="board-scroll">
+      <div class="board-scroll" id="board-scroll">
         <div class="board-grid" id="board"></div>
       </div>
       <div class="board-foot">
@@ -219,6 +220,7 @@
           <li><span class="swatch swatch-planned"></span>Next windows</li>
           <li><span class="swatch swatch-over"></span>Locked</li>
           <li><span class="swatch swatch-weekly"></span>Weekly reset</li>
+          <li><span class="swatch swatch-sub"></span>Subscription renewal</li>
         </ul>
         <p class="removed" id="removed" hidden></p>
       </div>
@@ -228,7 +230,7 @@
   <dialog class="usage-dialog" id="usage-dialog" aria-labelledby="usage-dialog-title">
     <form method="dialog" id="usage-form">
       <div class="dialog-head">
-        <h3 id="usage-dialog-title">Update Usage</h3>
+        <h3 id="usage-dialog-title">Update Usage & Subscription</h3>
         <button type="button" class="btn btn-ghost btn-small" id="usage-dialog-close">×</button>
       </div>
       <p class="muted" id="usage-dialog-account"></p>
@@ -247,9 +249,26 @@
         <label for="usage-weekly-used">Weekly Limit Used (%) (optional)</label>
         <input type="number" id="usage-weekly-used" min="0" max="100" placeholder="e.g. 25">
       </div>
+      <div class="form-row">
+        <label for="usage-sub-type">Subscription Plan Type</label>
+        <select id="usage-sub-type" class="select-field">
+          <option value="monthly">Monthly plan (renews month-to-month)</option>
+          <option value="yearly">Yearly plan (month-to-month cycles)</option>
+          <option value="fixed">1-Month / fixed plan (ends on date)</option>
+          <option value="none">None / Pay-as-you-go</option>
+        </select>
+      </div>
+      <div class="form-row" id="usage-renews-day-row">
+        <label for="usage-renews-day">Monthly Billing / Renewal Day (e.g. 6 for 6th to 6th)</label>
+        <input type="number" id="usage-renews-day" min="1" max="31" placeholder="e.g. 6">
+      </div>
+      <div class="form-row" id="usage-ends-at-row" hidden>
+        <label for="usage-ends-at">Plan Ending / Expiry Date</label>
+        <input type="date" id="usage-ends-at">
+      </div>
       <div class="dialog-actions">
         <button type="button" class="btn btn-ghost" id="usage-cancel">Cancel</button>
-        <button type="submit" class="btn btn-primary" id="usage-save">Save Usage</button>
+        <button type="submit" class="btn btn-primary" id="usage-save">Save Changes</button>
       </div>
     </form>
   </dialog>

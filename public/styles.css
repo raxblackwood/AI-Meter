@@ -136,13 +136,35 @@ main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; padding-
 }
 .segmented button[aria-checked="true"] { color: var(--text); background: var(--surface); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25); }
 
-.board-scroll { overflow-x: auto; }
+.board-scroll {
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-hover, #475569) var(--surface-2);
+}
+.board-scroll::-webkit-scrollbar {
+  height: 8px;
+}
+.board-scroll::-webkit-scrollbar-track {
+  background: var(--surface-2);
+  border-radius: 4px;
+}
+.board-scroll::-webkit-scrollbar-thumb {
+  background: var(--border-hover, #475569);
+  border-radius: 4px;
+}
+.board-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted, #94a3b8);
+}
+
 .board-grid {
   display: grid;
   grid-template-columns: 280px minmax(720px, 1fr);
   /* Grow to the content so sticky cells have the full scroll width to stick within. */
   width: max-content;
   min-width: 100%;
+}
+.board[data-range="month"] .board-grid {
+  grid-template-columns: 280px minmax(2600px, 1fr);
 }
 
 .axis-spacer, .axis { height: 36px; border-bottom: 1px solid var(--border); }
@@ -263,6 +285,36 @@ main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; padding-
 .track .now-line { top: 36px; }
 .axis .now-line { top: auto; height: 8px; }
 .weekly-mark { border-left: 2px dashed var(--ok); z-index: 1; margin-left: -1px; }
+.sub-mark {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 2px dashed #a855f7;
+  z-index: 2;
+  margin-left: -1px;
+}
+.sub-mark.sub-mark-ends {
+  border-left: 2px dashed #f97316;
+}
+.sub-mark-badge {
+  position: absolute;
+  top: 2px;
+  transform: translateX(-50%);
+  background: #7c3aed;
+  color: #fff;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+}
+.sub-mark-ends .sub-mark-badge {
+  background: #ea580c;
+}
 
 /* A bar is its start time on top and the window below; 1px side padding keeps neighbours apart. */
 .block {
@@ -334,10 +386,11 @@ main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; padding-
 .swatch-planned { background: var(--accent-faint); border: 1px dashed var(--accent-line); }
 .swatch-over { border-style: dashed; background: repeating-linear-gradient(135deg, transparent 0 3px, var(--border-strong) 3px 4px); }
 .swatch-weekly { width: 0; height: 12px; border: 0; border-left: 2px dashed var(--ok); border-radius: 0; }
+.swatch-sub { width: 0; height: 12px; border: 0; border-left: 2px dashed #a855f7; border-radius: 0; }
 
 /* ---------- controls ---------- */
 
-input {
+input, select.select-field {
   height: 30px;
   font: inherit;
   color: var(--text);

@@ -136,7 +136,10 @@ async function handleApi(req, res, url, hub, meter) {
     const name = typeof body.name === "string" && body.name.trim() ? body.name.trim().slice(0, MAX_NAME_LENGTH) : null;
     const email = typeof body.email === "string" && body.email.trim() ? body.email.trim() : null;
     const plan = typeof body.plan === "string" && body.plan.trim() ? body.plan.trim() : null;
-    const account = createAccount({ provider, name, email, plan });
+    const subType = typeof body.subType === "string" ? body.subType : null;
+    const renewsDay = body.renewsDay !== undefined ? Number(body.renewsDay) : null;
+    const endsAt = body.endsAt !== undefined ? Number(body.endsAt) : null;
+    const account = createAccount({ provider, name, email, plan, subType, renewsDay, endsAt });
     hub.status[account.id] = { state: "ok", error: null, checkedAt: Date.now() };
 
     const sessionLeft = body.sessionLeftPct !== undefined ? Number(body.sessionLeftPct) : (body.sessionUsedPct !== undefined ? 100 - Number(body.sessionUsedPct) : null);
@@ -196,13 +199,31 @@ async function handleApi(req, res, url, hub, meter) {
       weekly = { usedPct, resetsAt };
     }
     hub.recordAccountReading(id, { at: nowMs, session, weekly });
+
+    const subUpdates = {};
+    if (body.subType !== undefined) subUpdates.subType = body.subType;
+    if (body.renewsDay !== undefined) subUpdates.renewsDay = body.renewsDay ? Number(body.renewsDay) : null;
+    if (body.endsAt !== undefined) subUpdates.endsAt = body.endsAt ? Number(body.endsAt) : null;
+    if (body.plan !== undefined) subUpdates.plan = body.plan ? String(body.plan).slice(0, 50) : null;
+    if (Object.keys(subUpdates).length > 0) {
+      updateAccount(id, subUpdates);
+    }
+
     return sendJson(res, 200, { success: true, accountId: id });
   }
   if (req.method === "PATCH" && !action) {
     const body = await readBody(req);
-    const name = typeof body.name === "string" ? body.name.trim() : "";
-    if (!name || name.length > MAX_NAME_LENGTH) throw new HttpError(400, `Name must be 1 to ${MAX_NAME_LENGTH} characters`);
-    return sendJson(res, 200, publicAccount(updateAccount(id, { name })));
+    const updates = {};
+    if (typeof body.name === "string") {
+      const name = body.name.trim();
+      if (!name || name.length > MAX_NAME_LENGTH) throw new HttpError(400, `Name must be 1 to ${MAX_NAME_LENGTH} characters`);
+      updates.name = name;
+    }
+    if (body.subType !== undefined) updates.subType = body.subType;
+    if (body.renewsDay !== undefined) updates.renewsDay = body.renewsDay ? Number(body.renewsDay) : null;
+    if (body.endsAt !== undefined) updates.endsAt = body.endsAt ? Number(body.endsAt) : null;
+    if (body.plan !== undefined) updates.plan = body.plan ? String(body.plan).slice(0, 50) : null;
+    return sendJson(res, 200, publicAccount(updateAccount(id, updates)));
   }
   if (req.method === "DELETE" && !action) {
     // Soft remove, so Undo can bring it back with its history.

@@ -87,6 +87,11 @@ Product name: **AI Meter** (renamed 2026-10-29; the vault project and repository
   Extended Week view time range from 5 future days to a full 7 days rolling cycle ahead (`startOfDay(now) + 8 * DAY`).
   Ensured all accounts display their exact weekly reset time alongside session metrics in their row summary.
   Initialized 7-day rolling weekly quota for Codex and custom accounts so dashed weekly reset markers render reliably. 46 tests passing.
+- [x] Month Timeline View, Horizontal Scrolling & Subscription Period Tracking (ADR-024, 2026-11-04).
+  Added Month range view spanning 32 days with smooth horizontal scrolling across sticky account headers.
+  Added subscription tracking supporting monthly recurring cycles (e.g. 6th to next 6th), yearly plans with monthly quota cycles, and fixed 1-month plans showing ending dates.
+  Added purple dashed `.sub-mark` timeline markers with badges and dedicated plan rows in account summaries.
+  Added subscription configuration controls to the in-app Update dialog. 47 tests passing.
 - [ ] Rax: register a Chrome Web Store developer account (USD 5), host `PRIVACY.md` publicly (repo is private), add screenshots, submit after the first live reading works.
 - [x] Extension now reports its failures (`{ email?, signedOut, error }`) to `POST /api/connector/claude`; the app shows the reason in the header and the Add account panel (`connector.error`, cleared by the next good reading) (2026-10-28).
 - [x] First live Claude reading through the extension (2026-10-28, 20:48): Rax's account loaded in **Edge** became "Claude 1" with 5-hour 42% used and weekly 39% used, matching `five_hour` / `seven_day` with `utilization` and `resets_at`, and `/api/account` `email_address`. The app showed it in Next up and Active session. One earlier report was rejected (cause not captured); rejection diagnostics (`connector.error`, `connector.rejectedShape`, field names only) stay in place for the next time. (verify `/api/organizations/{org}/usage` shape and that extension fetches carry the claude.ai cookies).

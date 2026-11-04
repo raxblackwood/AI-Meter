@@ -8,6 +8,7 @@ const UNDO_MS = 8_000;
 const RANGES = {
   "3d": (now) => [now - 6 * HOUR, now - 6 * HOUR + 3 * DAY],
   week: (now) => [startOfDay(now) - DAY, startOfDay(now) + 8 * DAY],
+  month: (now) => [startOfDay(now) - DAY, startOfDay(now) + 32 * DAY],
 };
 // Room needed for a bar's start time: "01:10" in full, or just the hour ("01") in narrow bars.
 const FULL_LABEL_PX = 36;
@@ -409,6 +410,17 @@ function rowSummary(v, now) {
     }
   }
 
+  // 3. Subscription / Plan cycle or expiry
+  if (v.subscription) {
+    const isEnding = v.subscription.type === "fixed";
+    const tone = isEnding && v.subscription.daysLeft <= 3 ? "quota-val-warn" : "";
+    rows.push(`
+      <div class="quota-row">
+        <span class="quota-label">Plan</span>
+        <span class="quota-val ${tone}"><span class="num">${esc(v.subscription.label)}</span><span class="quota-sub">· ${esc(v.subscription.summary)}</span></span>
+      </div>`);
+  }
+
   return `<div class="quota-list">${rows.join("")}</div>`;
 }
 
@@ -426,7 +438,7 @@ function rowHead(v, now) {
     : `<a class="btn btn-primary btn-small" href="https://claude.ai/login" target="_blank" rel="noopener">Sign in</a>`;
   const menu = openMenuId === a.id
     ? `<div class="menu" role="menu">
-        <button type="button" role="menuitem" data-action="update-usage" data-id="${esc(a.id)}">Update usage</button>
+        <button type="button" role="menuitem" data-action="update-usage" data-id="${esc(a.id)}">Update usage & plan</button>
         <button type="button" role="menuitem" data-action="rename" data-id="${esc(a.id)}">Rename</button>
         ${appSignIn ? `<button type="button" role="menuitem" data-action="sign-in" data-id="${esc(a.id)}">Sign in again</button>` : ""}
         <button type="button" role="menuitem" class="menu-danger" data-action="remove" data-id="${esc(a.id)}">Remove</button>
@@ -471,10 +483,12 @@ function axis(spanStart, spanEnd, now, x) {
     const to = Math.min(day + DAY, spanEnd);
     if (day > spanStart) lines.push(`<span class="gridline" style="left:${x(day)}%"></span>`);
     // A sliver of a day at the edge gets no label.
-    if ((to - from) / (spanEnd - spanStart) < 0.06) continue;
+    if ((to - from) < 4 * HOUR) continue;
     const d = new Date(day);
+    const isFirst = d.getDate() === 1;
+    const dayName = day === startOfDay(now) ? "Today" : isFirst ? d.toLocaleDateString([], { month: "short" }) : d.toLocaleDateString([], { weekday: "short" });
     labels.push(`<div class="day ${day === startOfDay(now) ? "day-today" : ""}" style="left:${x(from)}%;width:${x(to) - x(from)}%">
-        <span>${day === startOfDay(now) ? "Today" : d.toLocaleDateString([], { weekday: "short" })}</span>
+        <span>${dayName}</span>
         <span class="num">${d.getDate()}</span>
       </div>`);
   }
@@ -488,6 +502,8 @@ function renderBoard(views, now, spanStart, spanEnd) {
   const trackPx = document.querySelector(".track")?.clientWidth || document.querySelector(".axis")?.clientWidth || 900;
   const { labels, lines } = axis(spanStart, spanEnd, now, x);
   const nowLine = `<span class="now-line" style="left:${x(now)}%"></span>`;
+
+  document.querySelector(".board")?.setAttribute("data-range", range);
 
   const rows = views.map((v) => {
     // Until an account has been read there is nothing to plan.
@@ -505,9 +521,29 @@ function renderBoard(views, now, spanStart, spanEnd) {
           ${label}<span class="block-body"><span class="block-fill" style="height:${fill}%"></span></span>
         </span>`;
       }).join("");
-    const weekly = v.weekly?.resetsAt && v.weekly.resetsAt >= spanStart && v.weekly.resetsAt <= spanEnd
-      ? `<span class="weekly-mark" style="left:${x(v.weekly.resetsAt)}%" title="Weekly reset ${esc(when(v.weekly.resetsAt, now))}"></span>` : "";
-    return `${rowHead(v, now)}<div class="track">${lines}${blocks}${weekly}${nowLine}</div>`;
+
+    // All weekly resets in the span (supports multi-week in month view)
+    const weeklyMarks = [];
+    if (v.weekly?.resetsAt) {
+      let r = v.weekly.resetsAt;
+      while (r - 7 * DAY >= spanStart) r -= 7 * DAY;
+      while (r <= spanEnd) {
+        if (r >= spanStart) {
+          weeklyMarks.push(`<span class="weekly-mark" style="left:${x(r)}%" title="Weekly reset ${esc(when(r, now))}"></span>`);
+        }
+        r += 7 * DAY;
+      }
+    }
+
+    // Subscription renewal / ending markers
+    const subMarks = (v.subscription?.markers || []).map((m) => {
+      const markClass = m.type === "ends" ? "sub-mark sub-mark-ends" : "sub-mark";
+      return `<span class="${markClass}" style="left:${x(m.at)}%" title="${esc(m.label)}">
+        <span class="sub-mark-badge">${esc(m.label)}</span>
+      </span>`;
+    }).join("");
+
+    return `${rowHead(v, now)}<div class="track">${lines}${blocks}${weeklyMarks.join("")}${subMarks}${nowLine}</div>`;
   }).join("");
 
   const empty = views.length ? "" : `<div class="empty">
@@ -752,8 +788,26 @@ function openUsageDialog(id) {
   $("usage-session-slider").value = Math.round(left);
   $("usage-duration").value = remainingHours;
   $("usage-weekly-used").value = snapshot?.weekly?.usedPct !== undefined ? Math.round(snapshot.weekly.usedPct) : "";
+
+  const subType = account.subType || "monthly";
+  if ($("usage-sub-type")) $("usage-sub-type").value = subType;
+  if ($("usage-renews-day")) $("usage-renews-day").value = account.renewsDay || new Date(account.createdAt || Date.now()).getDate();
+  if ($("usage-ends-at")) {
+    $("usage-ends-at").value = account.endsAt ? new Date(account.endsAt).toISOString().split("T")[0] : "";
+  }
+  updateUsageSubFields(subType);
+
   $("usage-dialog")?.showModal();
 }
+
+function updateUsageSubFields(type) {
+  if ($("usage-renews-day-row")) $("usage-renews-day-row").hidden = (type !== "monthly" && type !== "yearly");
+  if ($("usage-ends-at-row")) $("usage-ends-at-row").hidden = (type !== "fixed");
+}
+
+$("usage-sub-type")?.addEventListener("change", (e) => {
+  updateUsageSubFields(e.target.value);
+});
 
 $("usage-session-slider")?.addEventListener("input", (e) => {
   $("usage-session-left").value = e.target.value;
@@ -769,19 +823,28 @@ $("usage-form")?.addEventListener("submit", async (e) => {
   const sessionLeftPct = Number($("usage-session-left").value);
   const sessionDurationHours = Number($("usage-duration").value) || 3;
   const weeklyVal = $("usage-weekly-used").value.trim();
+  const subType = $("usage-sub-type")?.value || "monthly";
   const payload = {
     sessionLeftPct,
     sessionDurationHours,
+    subType,
   };
   if (weeklyVal !== "") payload.weeklyUsedPct = Number(weeklyVal);
+  if (subType === "monthly" || subType === "yearly") {
+    payload.renewsDay = Number($("usage-renews-day")?.value) || 1;
+  } else if (subType === "fixed") {
+    const dateVal = $("usage-ends-at")?.value;
+    payload.endsAt = dateVal ? new Date(`${dateVal}T00:00:00`).getTime() : null;
+  }
   try {
     await api("POST", `/api/accounts/${activeUsageAccountId}/reading`, payload);
     $("usage-dialog")?.close();
     await load();
-    showToast("Usage updated.", null);
+    showToast("Usage & subscription updated.", null);
   } catch (err) {
     showToast(`Could not update usage: ${err.message}`, null);
   }
+});
 });
 
 $("codex-form")?.addEventListener("submit", async (e) => {

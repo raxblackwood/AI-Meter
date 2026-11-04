@@ -93,3 +93,50 @@ test("the planner waits for the soonest reset when every window is used up", () 
   assert.equal(s.suggestion.at, NOW + HOUR);
   assert.equal(s.readyCount, 0);
 });
+
+test("subscriptionInfo tracks monthly cycles, yearly cycles and fixed 1-month plan end dates", () => {
+  // 1. Monthly plan renewing on the 6th of each month
+  const monthlyAcct = {
+    id: "m1",
+    provider: "claude",
+    subType: "monthly",
+    renewsDay: 6,
+    createdAt: NOW,
+  };
+  const mInfo = accountView(monthlyAcct, [], NOW, NOW, NOW + 35 * 24 * HOUR).subscription;
+  assert.ok(mInfo);
+  assert.equal(mInfo.type, "monthly");
+  assert.equal(mInfo.renewsDay, 6);
+  assert.ok(mInfo.summary.includes("Renews"));
+  assert.ok(mInfo.markers.length >= 1);
+
+  // 2. Yearly plan showing month-to-month renewals on the 6th
+  const yearlyAcct = {
+    id: "y1",
+    provider: "codex",
+    subType: "yearly",
+    renewsDay: 6,
+    createdAt: NOW,
+  };
+  const yInfo = accountView(yearlyAcct, [], NOW, NOW, NOW + 35 * 24 * HOUR).subscription;
+  assert.ok(yInfo);
+  assert.equal(yInfo.type, "yearly");
+  assert.ok(yInfo.label.includes("Yearly"));
+  assert.ok(yInfo.markers.some((m) => m.type === "renewal"));
+
+  // 3. Fixed 1-month plan showing when the plan is ending
+  const endsAt = NOW + 2 * 24 * HOUR;
+  const fixedAcct = {
+    id: "f1",
+    provider: "other",
+    subType: "fixed",
+    endsAt,
+    createdAt: NOW,
+  };
+  const fInfo = accountView(fixedAcct, [], NOW, NOW, NOW + 7 * 24 * HOUR).subscription;
+  assert.ok(fInfo);
+  assert.equal(fInfo.type, "fixed");
+  assert.equal(fInfo.daysLeft, 2);
+  assert.ok(fInfo.summary.includes("Ends"));
+  assert.ok(fInfo.markers.some((m) => m.type === "ends" && m.at === endsAt));
+});

@@ -83,7 +83,7 @@ function nextName(accounts, provider) {
  * `partition` and `orgId` are set only for Claude accounts signed in inside the desktop app:
  * the Electron session that holds the sign-in, and the organization to read usage for.
  */
-export function createAccount({ provider, email = null, name = null, plan = null, partition = null, orgId = null }, dir = dataDir()) {
+export function createAccount({ provider, email = null, name = null, plan = null, partition = null, orgId = null, subType = null, renewsDay = null, endsAt = null }, dir = dataDir()) {
   const meta = PROVIDERS[provider] || { label: provider.charAt(0).toUpperCase() + provider.slice(1), plan: plan || "AI subscription" };
   const accounts = readAccounts(dir);
   const account = {
@@ -92,6 +92,9 @@ export function createAccount({ provider, email = null, name = null, plan = null
     name: name || nextName(accounts, provider),
     email,
     plan: plan || meta.plan,
+    subType,
+    renewsDay,
+    endsAt,
     createdAt: Date.now(),
   };
   if (partition) Object.assign(account, { partition, orgId });

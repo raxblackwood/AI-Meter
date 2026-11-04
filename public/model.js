@@ -90,6 +90,102 @@ export function calibrate(snapshots) {
   };
 }
 
+/**
+ * Subscription renewal and plan period info.
+ * Supports recurring monthly plans (e.g. 6th to next 6th), yearly plans with monthly quota cycles,
+ * and fixed 1-month plans that show when the Pro plan ends.
+ */
+export function subscriptionInfo(account, now, spanStart = null, spanEnd = null) {
+  if (!account) return null;
+  const subType = account.subType || (account.provider === "claude" || account.provider === "antigravity" || account.provider === "codex" ? "monthly" : null);
+  if (!subType || subType === "none") return null;
+
+  const createdDate = new Date(account.createdAt || now);
+  const renewsDay = account.renewsDay ? Number(account.renewsDay) : createdDate.getDate();
+
+  const markers = [];
+
+  if (subType === "fixed") {
+    const endsAt = account.endsAt ? Number(account.endsAt) : (account.createdAt ? account.createdAt + 30 * DAY : now + 30 * DAY);
+    const daysLeft = Math.ceil((endsAt - now) / DAY);
+    const dateStr = new Date(endsAt).toLocaleDateString([], { day: "numeric", month: "short" });
+    const summary = daysLeft > 0 ? `Ends ${dateStr} (${daysLeft}d left)` : `Ended ${dateStr}`;
+
+    if (spanStart && spanEnd && endsAt >= spanStart && endsAt <= spanEnd) {
+      markers.push({ at: endsAt, type: "ends", label: `Plan ends ${dateStr}` });
+    }
+
+    return {
+      type: "fixed",
+      label: "1-Month Plan",
+      summary,
+      endsAt,
+      daysLeft,
+      markers,
+    };
+  }
+
+  // Monthly or Yearly recurring
+  if (spanStart && spanEnd) {
+    const sDate = new Date(spanStart);
+    const eDate = new Date(spanEnd);
+    let curYear = sDate.getFullYear();
+    let curMonth = sDate.getMonth();
+    const endYear = eDate.getFullYear();
+    const endMonth = eDate.getMonth();
+
+    while (curYear < endYear || (curYear === endYear && curMonth <= endMonth)) {
+      const daysInM = new Date(curYear, curMonth + 1, 0).getDate();
+      const day = Math.min(renewsDay, daysInM);
+      const d = new Date(curYear, curMonth, day, 0, 0, 0, 0);
+      const t = d.getTime();
+      if (t >= spanStart && t <= spanEnd) {
+        markers.push({
+          at: t,
+          type: "renewal",
+          label: `${subType === "yearly" ? "Yearly cycle" : "Plan renews"} ${d.toLocaleDateString([], { day: "numeric", month: "short" })}`,
+        });
+      }
+      curMonth++;
+      if (curMonth > 11) {
+        curMonth = 0;
+        curYear++;
+      }
+    }
+  }
+
+  // Compute next renewal relative to now
+  const nowDate = new Date(now);
+  let nextYear = nowDate.getFullYear();
+  let nextMonth = nowDate.getMonth();
+  const daysInCurM = new Date(nextYear, nextMonth + 1, 0).getDate();
+  let nextRenewal = new Date(nextYear, nextMonth, Math.min(renewsDay, daysInCurM), 0, 0, 0, 0).getTime();
+
+  if (nextRenewal <= now) {
+    nextMonth++;
+    if (nextMonth > 11) {
+      nextMonth = 0;
+      nextYear++;
+    }
+    const daysInNextM = new Date(nextYear, nextMonth + 1, 0).getDate();
+    nextRenewal = new Date(nextYear, nextMonth, Math.min(renewsDay, daysInNextM), 0, 0, 0, 0).getTime();
+  }
+
+  const daysUntil = Math.max(0, Math.ceil((nextRenewal - now) / DAY));
+  const planLabel = subType === "yearly" ? "Yearly plan" : "Monthly plan";
+  const dateStr = new Date(nextRenewal).toLocaleDateString([], { day: "numeric", month: "short" });
+  const summary = `Renews ${dateStr} (${daysUntil}d left)`;
+
+  return {
+    type: subType,
+    label: planLabel,
+    renewsDay,
+    nextRenewal,
+    summary,
+    markers,
+  };
+}
+
 /** Everything the dashboard shows for one account at time `now`, over the timeline [spanStart, spanEnd). */
 export function accountView(account, allSnapshots, now, spanStart, spanEnd) {
   const snapshots = allSnapshots
@@ -164,6 +260,8 @@ export function accountView(account, allSnapshots, now, spanStart, spanEnd) {
     }));
   windows.push(...planWindows({ session, weekly, exhausted, calibration, sessionsLeft, now, spanEnd }));
 
+  const subscription = subscriptionInfo(account, now, spanStart, spanEnd);
+
   return {
     account,
     session,
@@ -176,6 +274,7 @@ export function accountView(account, allSnapshots, now, spanStart, spanEnd) {
     calibration,
     sessionsLeft,
     windows,
+    subscription,
     lastSeenAt: snapshots.at(-1)?.at ?? null,
   };
 }
@@ -191,17 +290,20 @@ function planWindows({ session, weekly, exhausted, calibration, sessionsLeft, no
   else budget = exhausted ? 0 : Infinity;
 
   const planned = [];
-  let refilled = false;
+  let nextWeeklyRefill = weekly?.resetsAt || null;
   let cursor = session.state === "open" ? session.resetsAt : now;
   // A lockout is one locked stretch, and the next window can start the moment it lifts.
   if (exhausted && weekly?.resetsAt > cursor) {
     planned.push({ start: cursor, end: weekly.resetsAt, capacityPct: 0, kind: "over" });
     cursor = weekly.resetsAt;
   }
+  while (nextWeeklyRefill && nextWeeklyRefill < cursor) {
+    nextWeeklyRefill += 7 * DAY;
+  }
   for (; cursor < spanEnd; cursor += SESSION_MS) {
-    if (!refilled && weekly?.resetsAt && cursor >= weekly.resetsAt) {
+    if (nextWeeklyRefill && cursor >= nextWeeklyRefill) {
       budget = calibration.ready ? calibration.sessionsPerWeek : Infinity;
-      refilled = true;
+      nextWeeklyRefill += 7 * DAY;
     }
     const capacity = Math.max(0, Math.min(1, budget));
     planned.push({
