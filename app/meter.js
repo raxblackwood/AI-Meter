@@ -40,11 +40,11 @@ export function createMeter({ url, userData, onOpen, menuItems }) {
   function place(y) {
     if (!win) return;
     const area = screen.getPrimaryDisplay().workArea;
+    const maxTop = Math.max(area.y, area.y + area.height - height);
     const defaultY = area.y + Math.round((area.height - height) / 2);
     const savedY = settings.read().y;
-    // Prefer savedY only when it sits safely within the visible work area, avoiding taskbar occlusion
-    const candidateY = y ?? (savedY !== undefined && savedY >= area.y && savedY <= area.y + area.height - height - 40 ? savedY : defaultY);
-    const top = Math.min(Math.max(candidateY, area.y), area.y + area.height - height);
+    const candidateY = y ?? (typeof savedY === "number" && !Number.isNaN(savedY) ? savedY : defaultY);
+    const top = Math.min(Math.max(candidateY, area.y), maxTop);
     win.setBounds({ x: area.x + area.width - WIDTH - EDGE_GAP, y: Math.round(top), width: WIDTH, height });
   }
 

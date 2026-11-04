@@ -4,7 +4,7 @@ import { badgeFor, initials } from "./badge.js";
 import { accountView, DAY } from "./model.js";
 
 const REFRESH_MS = 30_000;
-const PROVIDER_ORDER = { claude: 0, antigravity: 1 };
+const PROVIDER_ORDER = { claude: 0, antigravity: 1, codex: 2, other: 3 };
 // Ring geometry in a 28x28 view box, 3px strokes with a 2px gap between the rings.
 const OUTER = 11.5;
 const INNER = 6.5;
