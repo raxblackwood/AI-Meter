@@ -51,44 +51,50 @@
       <div class="provider-steps" data-steps="codex" hidden>
         <div class="method-card">
           <div class="method-badge">OpenAI Codex & ChatGPT</div>
-          <h3>Add Codex / ChatGPT Account</h3>
-          <p class="muted">Track your OpenAI Codex or ChatGPT Plus / Pro rolling session limits and weekly usage on the schedule board and floating meter.</p>
-          <form class="custom-account-form" id="codex-form">
-            <div class="form-row">
-              <label for="codex-name">Account Name</label>
-              <input type="text" id="codex-name" placeholder="e.g. Codex 1 or ChatGPT Plus" maxlength="40" required>
-            </div>
-            <div class="form-row">
-              <label for="codex-email">Email or Plan (optional)</label>
-              <input type="text" id="codex-email" placeholder="e.g. user@openai.com or Plus Plan" maxlength="60">
-            </div>
-            <div class="form-row form-grid-2">
-              <div>
-                <label for="codex-session-dur">Session Window</label>
-                <select id="codex-session-dur">
-                  <option value="3" selected>3 hours (ChatGPT / Codex standard)</option>
-                  <option value="5">5 hours</option>
-                  <option value="1">1 hour</option>
-                  <option value="2">2 hours</option>
-                  <option value="4">4 hours</option>
-                </select>
+          <h3>Codex & ChatGPT</h3>
+          <div id="codex-detected" class="detected-box" hidden></div>
+          <p class="muted" id="codex-desc">Track your OpenAI Codex or ChatGPT Plus / Pro rolling session limits and weekly usage on the schedule board and floating meter.</p>
+          
+          <details class="manual-install" id="codex-manual-details">
+            <summary id="codex-manual-summary">Add another Codex / ChatGPT account manually</summary>
+            <form class="custom-account-form" id="codex-form">
+              <div class="form-row">
+                <label for="codex-name">Account Name</label>
+                <input type="text" id="codex-name" placeholder="e.g. Codex 2 or ChatGPT Team" maxlength="40" required>
               </div>
-              <div>
-                <label for="codex-session-left">Session Available Now</label>
-                <select id="codex-session-left">
-                  <option value="100" selected>100% (Ready / Full window)</option>
-                  <option value="75">75% left</option>
-                  <option value="50">50% left</option>
-                  <option value="25">25% left (Low)</option>
-                  <option value="0">0% (Locked / Running down)</option>
-                </select>
+              <div class="form-row">
+                <label for="codex-email">Email or Plan (optional)</label>
+                <input type="text" id="codex-email" placeholder="e.g. user@openai.com or Plus Plan" maxlength="60">
               </div>
-            </div>
-            <div class="form-actions">
-              <button type="submit" class="btn btn-primary" id="add-codex-btn">Add Codex Account</button>
-            </div>
-            <p class="connect-status" id="codex-status" role="status" hidden></p>
-          </form>
+              <div class="form-row form-grid-2">
+                <div>
+                  <label for="codex-session-dur">Session Window</label>
+                  <select id="codex-session-dur">
+                    <option value="3" selected>3 hours (ChatGPT / Codex standard)</option>
+                    <option value="5">5 hours</option>
+                    <option value="1">1 hour</option>
+                    <option value="2">2 hours</option>
+                    <option value="4">4 hours</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="codex-session-left">Session Available Now</label>
+                  <select id="codex-session-left">
+                    <option value="100" selected>100% (Ready / Full window)</option>
+                    <option value="75">75% left</option>
+                    <option value="50">50% left</option>
+                    <option value="25">25% left (Low)</option>
+                    <option value="0">0% (Locked / Running down)</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-actions">
+                <button type="submit" class="btn btn-primary" id="add-codex-btn">Add Account</button>
+              </div>
+              <p class="connect-status" id="codex-status" role="status" hidden></p>
+            </form>
+          </details>
+
           <details class="manual-install">
             <summary>Automate live updates (CLI or Webhook)</summary>
             <p class="muted">You can also push usage from terminal scripts or hooks automatically:</p>

@@ -183,11 +183,27 @@ function renderConnect(now) {
   }
 
   const cx = state.codex;
-  if ($("codex-status")) {
+  if ($("codex-detected")) {
     if (cx?.available) {
-      $("codex-status").hidden = false;
-      $("codex-status").textContent = `Codex detected locally as ${cx.email} (${cx.plan}). Tracked automatically!`;
-      $("codex-status").classList.add("connect-ok");
+      $("codex-detected").hidden = false;
+      $("codex-detected").innerHTML = `
+        <div class="detected-badge-inner">
+          <span class="live-dot" aria-hidden="true"></span>
+          <div>
+            <strong>Codex is active & tracked automatically</strong>
+            <p class="muted">Signed in as <strong>${esc(cx.email)}</strong> (${esc(cx.plan)}). Quota is live on your schedule and meter with a rolling 3-hour window.</p>
+          </div>
+        </div>`;
+      if ($("codex-desc")) $("codex-desc").hidden = true;
+      if ($("codex-manual-details") && !$("codex-manual-details").dataset.userInteracted) {
+        $("codex-manual-details").open = false;
+      }
+    } else {
+      $("codex-detected").hidden = true;
+      if ($("codex-desc")) $("codex-desc").hidden = false;
+      if ($("codex-manual-details") && !$("codex-manual-details").dataset.userInteracted) {
+        $("codex-manual-details").open = true;
+      }
     }
   }
 }
