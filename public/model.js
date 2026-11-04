@@ -172,7 +172,7 @@ export function subscriptionInfo(account, now, spanStart = null, spanEnd = null)
   }
 
   const daysUntil = Math.max(0, Math.ceil((nextRenewal - now) / DAY));
-  const planLabel = subType === "yearly" ? "Yearly plan" : "Monthly plan";
+  const planLabel = subType === "yearly" ? "Yearly" : "Monthly";
   const dateStr = new Date(nextRenewal).toLocaleDateString([], { day: "numeric", month: "short" });
   const summary = `Renews ${dateStr} (${daysUntil}d left)`;
 

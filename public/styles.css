@@ -70,7 +70,13 @@ h3 { font-size: 14px; font-weight: 600; }
 
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
-.top, main { max-width: 1440px; margin: 0 auto; padding: 0 32px; }
+.top, main {
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 0 24px;
+  box-sizing: border-box;
+}
 .top { padding-top: 28px; padding-bottom: 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .top-actions { display: flex; align-items: center; gap: 16px; }
 /* minmax(0, 1fr) stops long unbreakable content (emails) from widening the page. */
@@ -158,19 +164,29 @@ main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; padding-
 
 .board-grid {
   display: grid;
-  grid-template-columns: 280px minmax(720px, 1fr);
+  grid-template-columns: 340px minmax(720px, 1fr);
   /* Grow to the content so sticky cells have the full scroll width to stick within. */
   width: max-content;
   min-width: 100%;
 }
 .board[data-range="month"] .board-grid {
-  grid-template-columns: 280px minmax(2600px, 1fr);
+  grid-template-columns: 340px minmax(2600px, 1fr);
 }
 
 .axis-spacer, .axis { height: 36px; border-bottom: 1px solid var(--border); }
 /* The account column stays put while the timeline scrolls on narrow screens. */
-.axis-spacer, .row-head { position: sticky; left: 0; z-index: 3; background: var(--surface); }
-.axis-spacer { border-right: 1px solid var(--border); }
+.axis-spacer, .row-head {
+  position: sticky;
+  left: 0;
+  z-index: 10;
+  background: var(--surface);
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.45);
+}
+.axis-spacer {
+  width: 340px;
+  box-sizing: border-box;
+  border-right: 1px solid var(--border);
+}
 .axis { position: relative; }
 .day {
   position: absolute;
@@ -187,7 +203,10 @@ main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; padding-
 .day-today .num { color: var(--accent-text); }
 
 .row-head {
-  padding: 16px 16px 16px 24px;
+  width: 340px;
+  box-sizing: border-box;
+  overflow: hidden;
+  padding: 16px 16px 16px 20px;
   border-right: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
   display: grid;
@@ -220,9 +239,10 @@ main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; padding-
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
   font-size: 12px;
   line-height: 1.4;
+  min-width: 0;
 }
 .quota-label {
   font-size: 11px;
@@ -238,6 +258,10 @@ main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; padding-
   color: var(--text);
   text-align: right;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex-shrink: 1;
 }
 .quota-val .num {
   font-variant-numeric: tabular-nums;

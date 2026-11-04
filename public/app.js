@@ -393,7 +393,7 @@ function rowSummary(v, now) {
     if (v.weekly?.usedPct !== undefined) {
       const tone = v.weekly.usedPct >= 100 ? "quota-val-danger" : v.weekly.usedPct >= 80 ? "quota-val-warn" : "";
       const parts = [];
-      if (v.sessionsLeft !== null) parts.push(`${sessions(v.sessionsLeft)} sessions left`);
+      if (v.sessionsLeft !== null) parts.push(`${sessions(v.sessionsLeft)} left`);
       if (v.weekly.resetsAt) parts.push(`resets ${when(v.weekly.resetsAt, now)}`);
       const sub = parts.join(" · ");
       rows.push(`
