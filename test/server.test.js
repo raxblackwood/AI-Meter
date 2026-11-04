@@ -184,3 +184,52 @@ test("extension download and open-folder endpoints work", async () => {
   assert.equal(openFolder.status, 200);
   assert.deepEqual(JSON.parse(openFolder.text), { ok: true });
 });
+
+test("custom and codex accounts can be created, updated and automated via webhook", async () => {
+  // 1. Create a Codex account with initial usage
+  const createRes = await call("POST", "/api/accounts", {
+    provider: "codex",
+    name: "Codex Work",
+    email: "work@openai.com",
+    sessionDurationHours: 3,
+    sessionLeftPct: 80,
+  });
+  assert.equal(createRes.status, 201);
+  assert.equal(createRes.body.name, "Codex Work");
+  assert.equal(createRes.body.provider, "codex");
+
+  // Verify it appears in state with reading
+  const state1 = (await call("GET", "/api/state")).body;
+  const created = state1.accounts.find((a) => a.id === createRes.body.id);
+  assert.ok(created);
+  const snap1 = state1.snapshots.find((s) => s.accountId === created.id);
+  assert.ok(snap1);
+  assert.equal(snap1.session.usedPct, 20); // 80% left = 20% used
+
+  // 2. Update usage directly on the account
+  const updateRes = await call("POST", `/api/accounts/${created.id}/reading`, {
+    sessionLeftPct: 50,
+    sessionDurationHours: 3,
+    weeklyUsedPct: 35,
+  });
+  assert.equal(updateRes.status, 200);
+
+  const state2 = (await call("GET", "/api/state")).body;
+  const snap2 = state2.snapshots.filter((s) => s.accountId === created.id).at(-1);
+  assert.equal(snap2.session.usedPct, 50);
+  assert.equal(snap2.weekly.usedPct, 35);
+
+  // 3. Generic connector/reading endpoint for automated tools
+  const webhookRes = await call("POST", "/api/connector/reading", {
+    provider: "other",
+    name: "Cursor Pro",
+    session: { usedPct: 15, resetsAt: Date.now() + 5 * 3600_000 },
+  });
+  assert.equal(webhookRes.status, 200);
+  assert.ok(webhookRes.body.accountId);
+
+  const state3 = (await call("GET", "/api/state")).body;
+  const cursorAcct = state3.accounts.find((a) => a.id === webhookRes.body.accountId);
+  assert.ok(cursorAcct);
+  assert.equal(cursorAcct.name, "Cursor Pro");
+});

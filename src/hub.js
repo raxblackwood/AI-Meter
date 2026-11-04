@@ -127,6 +127,36 @@ export function createHub({ claudeClient = null, antigravity = true, now = Date.
     })();
   }
 
+  function recordAccountReading(accountId, reading) {
+    const account = readAccounts().find((a) => a.id === accountId);
+    if (!account) throw httpError(404, "No such account");
+    recordReading(accountId, reading);
+    setStatus(accountId, "ok");
+    return account;
+  }
+
+  function receiveCustomReading(payload) {
+    const provider = payload.provider || "other";
+    const email = payload.email || null;
+    let account;
+    if (email) {
+      account = accountForIdentity(provider, email);
+    } else if (payload.name) {
+      account = readAccounts().find((a) => a.provider === provider && a.name === payload.name)
+        ?? createAccount({ provider, name: payload.name, plan: payload.plan });
+    } else {
+      account = createAccount({ provider, plan: payload.plan });
+    }
+    const reading = {
+      at: now(),
+      session: payload.session ?? null,
+      weekly: payload.weekly ?? null,
+    };
+    recordReading(account.id, reading);
+    setStatus(account.id, "ok");
+    return account;
+  }
+
   return {
     status,
     connector,
@@ -134,6 +164,8 @@ export function createHub({ claudeClient = null, antigravity = true, now = Date.
     canSignIn: Boolean(claudeClient),
     antigravity: agCollector.status,
     receiveClaude,
+    receiveCustomReading,
+    recordAccountReading,
     startSignIn,
     pollAppAccounts,
     start() {

@@ -78,6 +78,11 @@ Product name: **AI Meter** (renamed 2026-10-29; the vault project and repository
   Implemented GET /api/extension/download serving pure Node zip package ai-meter-extension.zip for 1-click download directly from the app.
   Implemented POST /api/extension/open-folder to reveal the extension directory in Windows File Explorer in 1 click.
   Packaged extension without external tools via src/zip.js. 45 tests passing.
+- [x] Universal AI Account Support: Codex / OpenAI, Custom / Other, In-App Usage Editor & Webhook API (ADR-022, 2026-11-04).
+  Added first-class provider options for Codex / OpenAI and Other / Custom (Copilot, Cursor, Open Code, Hermes, local LLM).
+  Added direct account creation form with custom session durations (e.g. 3-hour ChatGPT/Codex standard or 5-hour rolling windows).
+  Added in-app Update Usage dialog from row menu to adjust session % and reset timer on demand.
+  Added POST /api/connector/reading and POST /api/accounts/:id/reading webhook endpoints for automated CLI and script reporting. 46 tests passing.
 - [ ] Rax: register a Chrome Web Store developer account (USD 5), host `PRIVACY.md` publicly (repo is private), add screenshots, submit after the first live reading works.
 - [x] Extension now reports its failures (`{ email?, signedOut, error }`) to `POST /api/connector/claude`; the app shows the reason in the header and the Add account panel (`connector.error`, cleared by the next good reading) (2026-10-28).
 - [x] First live Claude reading through the extension (2026-10-28, 20:48): Rax's account loaded in **Edge** became "Claude 1" with 5-hour 42% used and weekly 39% used, matching `five_hour` / `seven_day` with `utilization` and `resets_at`, and `/api/account` `email_address`. The app showed it in Next up and Active session. One earlier report was rejected (cause not captured); rejection diagnostics (`connector.error`, `connector.rejectedShape`, field names only) stay in place for the next time. (verify `/api/organizations/{org}/usage` shape and that extension fetches carry the claude.ai cookies).

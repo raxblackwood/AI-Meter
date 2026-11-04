@@ -34,12 +34,120 @@
         <button type="button" class="provider-option" role="radio" aria-checked="false" data-provider="antigravity">
           <strong>Antigravity</strong><span class="muted-2">Google AI plan</span>
         </button>
+        <button type="button" class="provider-option" role="radio" aria-checked="false" data-provider="codex">
+          <strong>Codex / OpenAI</strong><span class="muted-2">ChatGPT Plus/Pro, Codex</span>
+        </button>
+        <button type="button" class="provider-option" role="radio" aria-checked="false" data-provider="other">
+          <strong>Other / Custom</strong><span class="muted-2">Copilot, Cursor, Open Code</span>
+        </button>
       </div>
 
       <div class="provider-steps" data-steps="antigravity" hidden>
         <p>Open Antigravity on this computer and sign in with the account you want to add. It appears here within a minute, with no other setup.</p>
         <p class="muted">To add more Antigravity accounts, sign in to each one in Antigravity once. Each stays tracked after you switch to another.</p>
         <p class="connect-status" id="antigravity-status" role="status"></p>
+      </div>
+
+      <div class="provider-steps" data-steps="codex" hidden>
+        <div class="method-card">
+          <div class="method-badge">OpenAI Codex & ChatGPT</div>
+          <h3>Add Codex / ChatGPT Account</h3>
+          <p class="muted">Track your OpenAI Codex or ChatGPT Plus / Pro rolling session limits and weekly usage on the schedule board and floating meter.</p>
+          <form class="custom-account-form" id="codex-form">
+            <div class="form-row">
+              <label for="codex-name">Account Name</label>
+              <input type="text" id="codex-name" placeholder="e.g. Codex 1 or ChatGPT Plus" maxlength="40" required>
+            </div>
+            <div class="form-row">
+              <label for="codex-email">Email or Plan (optional)</label>
+              <input type="text" id="codex-email" placeholder="e.g. user@openai.com or Plus Plan" maxlength="60">
+            </div>
+            <div class="form-row form-grid-2">
+              <div>
+                <label for="codex-session-dur">Session Window</label>
+                <select id="codex-session-dur">
+                  <option value="3" selected>3 hours (ChatGPT / Codex standard)</option>
+                  <option value="5">5 hours</option>
+                  <option value="1">1 hour</option>
+                  <option value="2">2 hours</option>
+                  <option value="4">4 hours</option>
+                </select>
+              </div>
+              <div>
+                <label for="codex-session-left">Session Available Now</label>
+                <select id="codex-session-left">
+                  <option value="100" selected>100% (Ready / Full window)</option>
+                  <option value="75">75% left</option>
+                  <option value="50">50% left</option>
+                  <option value="25">25% left (Low)</option>
+                  <option value="0">0% (Locked / Running down)</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-actions">
+              <button type="submit" class="btn btn-primary" id="add-codex-btn">Add Codex Account</button>
+            </div>
+            <p class="connect-status" id="codex-status" role="status" hidden></p>
+          </form>
+          <details class="manual-install">
+            <summary>Automate live updates (CLI or Webhook)</summary>
+            <p class="muted">You can also push usage from terminal scripts or hooks automatically:</p>
+            <pre class="code-snippet"><code>curl -X POST http://127.0.0.1:4317/api/connector/reading \
+  -H "Content-Type: application/json" \
+  -d '{"provider":"codex","name":"Codex 1","session":{"usedPct":20,"resetsAt":1730000000000}}'</code></pre>
+          </details>
+        </div>
+      </div>
+
+      <div class="provider-steps" data-steps="other" hidden>
+        <div class="method-card">
+          <div class="method-badge">Universal AI Tracker</div>
+          <h3>Add Custom AI Account</h3>
+          <p class="muted">Add any AI assistant or coding tool: GitHub Copilot, Cursor, Open Code, Hermes, local LLM, or custom API endpoints.</p>
+          <form class="custom-account-form" id="custom-form">
+            <div class="form-row">
+              <label for="custom-name">Account or Tool Name</label>
+              <input type="text" id="custom-name" placeholder="e.g. Cursor Pro, Copilot, Hermes 3" maxlength="40" required>
+            </div>
+            <div class="form-row">
+              <label for="custom-email">Email or Identifier (optional)</label>
+              <input type="text" id="custom-email" placeholder="e.g. dev@company.com or Local GPU" maxlength="60">
+            </div>
+            <div class="form-row form-grid-2">
+              <div>
+                <label for="custom-session-dur">Session Window Duration</label>
+                <select id="custom-session-dur">
+                  <option value="5" selected>5 hours (standard)</option>
+                  <option value="3">3 hours</option>
+                  <option value="1">1 hour</option>
+                  <option value="2">2 hours</option>
+                  <option value="24">24 hours (Daily limit)</option>
+                </select>
+              </div>
+              <div>
+                <label for="custom-session-left">Session Available Now</label>
+                <select id="custom-session-left">
+                  <option value="100" selected>100% (Ready)</option>
+                  <option value="75">75% left</option>
+                  <option value="50">50% left</option>
+                  <option value="25">25% left</option>
+                  <option value="0">0% (Exhausted)</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-actions">
+              <button type="submit" class="btn btn-primary" id="add-custom-btn">Add Account</button>
+            </div>
+            <p class="connect-status" id="custom-status" role="status" hidden></p>
+          </form>
+          <details class="manual-install">
+            <summary>Automate live updates (CLI or Webhook)</summary>
+            <p class="muted">Post usage directly from any bash script, Python CLI, or webhook:</p>
+            <pre class="code-snippet"><code>curl -X POST http://127.0.0.1:4317/api/connector/reading \
+  -H "Content-Type: application/json" \
+  -d '{"provider":"other","name":"Cursor Pro","session":{"usedPct":10,"resetsAt":1730000000000}}'</code></pre>
+          </details>
+        </div>
       </div>
 
       <div class="provider-steps" data-steps="claude" hidden>
@@ -110,6 +218,35 @@
       </div>
     </section>
   </main>
+
+  <dialog class="usage-dialog" id="usage-dialog" aria-labelledby="usage-dialog-title">
+    <form method="dialog" id="usage-form">
+      <div class="dialog-head">
+        <h3 id="usage-dialog-title">Update Usage</h3>
+        <button type="button" class="btn btn-ghost btn-small" id="usage-dialog-close">×</button>
+      </div>
+      <p class="muted" id="usage-dialog-account"></p>
+      <div class="form-row">
+        <label for="usage-session-left">Session Capacity Left (%)</label>
+        <div class="slider-row">
+          <input type="range" id="usage-session-slider" min="0" max="100" value="100">
+          <input type="number" id="usage-session-left" min="0" max="100" value="100" style="width: 70px;">
+        </div>
+      </div>
+      <div class="form-row">
+        <label for="usage-duration">Resets In (hours from now)</label>
+        <input type="number" id="usage-duration" min="0.5" max="168" step="0.5" value="3">
+      </div>
+      <div class="form-row">
+        <label for="usage-weekly-used">Weekly Limit Used (%) (optional)</label>
+        <input type="number" id="usage-weekly-used" min="0" max="100" placeholder="e.g. 25">
+      </div>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" id="usage-cancel">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="usage-save">Save Usage</button>
+      </div>
+    </form>
+  </dialog>
 
   <div class="toast" id="toast" role="status" aria-live="polite" hidden>
     <span id="toast-text"></span>

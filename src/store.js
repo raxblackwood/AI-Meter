@@ -15,6 +15,8 @@ const LATEST_FILE = "latest.json";
 export const PROVIDERS = {
   claude: { label: "Claude", plan: "Claude subscription" },
   antigravity: { label: "Antigravity", plan: "Google AI Pro" },
+  codex: { label: "Codex", plan: "OpenAI Codex / ChatGPT" },
+  other: { label: "Custom", plan: "Custom AI plan" },
 };
 
 export function dataDir() {
@@ -67,9 +69,10 @@ function writeAccounts(accounts, dir) {
   writeJsonAtomic(join(dir, ACCOUNTS_FILE), accounts);
 }
 
-/** Default name for a new account: "Claude 2", "Antigravity 3", counting removed ones so names stay unique. */
+/** Default name for a new account: "Claude 2", "Antigravity 3", "Codex 1", counting removed ones so names stay unique. */
 function nextName(accounts, provider) {
-  const label = PROVIDERS[provider].label;
+  const meta = PROVIDERS[provider] || { label: provider.charAt(0).toUpperCase() + provider.slice(1) };
+  const label = meta.label;
   const used = new Set(accounts.map((a) => a.name));
   for (let n = accounts.filter((a) => a.provider === provider).length + 1; ; n++) {
     if (!used.has(`${label} ${n}`)) return `${label} ${n}`;
@@ -80,10 +83,17 @@ function nextName(accounts, provider) {
  * `partition` and `orgId` are set only for Claude accounts signed in inside the desktop app:
  * the Electron session that holds the sign-in, and the organization to read usage for.
  */
-export function createAccount({ provider, email = null, name = null, partition = null, orgId = null }, dir = dataDir()) {
-  if (!PROVIDERS[provider]) throw new Error(`Unknown provider ${provider}`);
+export function createAccount({ provider, email = null, name = null, plan = null, partition = null, orgId = null }, dir = dataDir()) {
+  const meta = PROVIDERS[provider] || { label: provider.charAt(0).toUpperCase() + provider.slice(1), plan: plan || "AI subscription" };
   const accounts = readAccounts(dir);
-  const account = { id: randomUUID(), provider, name: name || nextName(accounts, provider), email, createdAt: Date.now() };
+  const account = {
+    id: randomUUID(),
+    provider,
+    name: name || nextName(accounts, provider),
+    email,
+    plan: plan || meta.plan,
+    createdAt: Date.now(),
+  };
   if (partition) Object.assign(account, { partition, orgId });
   writeAccounts([...accounts, account], dir);
   return account;

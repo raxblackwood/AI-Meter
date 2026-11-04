@@ -14,7 +14,7 @@ const FULL_LABEL_PX = 36;
 const HOUR_LABEL_PX = 18;
 // An Antigravity reading older than this means that account is not the one signed in right now.
 const CURRENT_WITHIN_MS = 3 * MINUTE;
-const PROVIDER_ORDER = { claude: 0, antigravity: 1 };
+const PROVIDER_ORDER = { claude: 0, antigravity: 1, codex: 2, other: 3 };
 const RANGE_KEY = "ai-usage.range";
 
 const $ = (id) => document.getElementById(id);
@@ -24,6 +24,7 @@ let undoAction = null;
 let refreshTimer = null;
 let openMenuId = null;
 let renamingId = null;
+let activeUsageAccountId = null;
 let loadError = null;
 let range = readRange();
 
@@ -377,6 +378,7 @@ function rowHead(v, now) {
     : `<a class="btn btn-primary btn-small" href="https://claude.ai/login" target="_blank" rel="noopener">Sign in</a>`;
   const menu = openMenuId === a.id
     ? `<div class="menu" role="menu">
+        <button type="button" role="menuitem" data-action="update-usage" data-id="${esc(a.id)}">Update usage</button>
         <button type="button" role="menuitem" data-action="rename" data-id="${esc(a.id)}">Rename</button>
         ${appSignIn ? `<button type="button" role="menuitem" data-action="sign-in" data-id="${esc(a.id)}">Sign in again</button>` : ""}
         <button type="button" role="menuitem" class="menu-danger" data-action="remove" data-id="${esc(a.id)}">Remove</button>
@@ -616,7 +618,10 @@ document.addEventListener("click", async (event) => {
   if (item) {
     const id = item.dataset.id;
     openMenuId = null;
-    if (item.dataset.action === "rename") {
+    if (item.dataset.action === "update-usage") {
+      activeUsageAccountId = id;
+      openUsageDialog(id);
+    } else if (item.dataset.action === "rename") {
       renamingId = id;
       render();
       const input = document.querySelector(`[data-rename="${CSS.escape(id)}"]`);
@@ -672,6 +677,115 @@ document.addEventListener("keydown", (event) => {
 document.addEventListener("focusout", (event) => {
   const input = event.target.closest?.("[data-rename]");
   if (input && renamingId === input.dataset.rename) finishRename(input.dataset.rename, true);
+});
+
+function openUsageDialog(id) {
+  const account = state.accounts.find((a) => a.id === id);
+  if (!account) return;
+  const snapshot = [...state.snapshots].reverse().find((s) => s.accountId === id);
+  const left = snapshot?.session?.usedPct !== undefined ? 100 - snapshot.session.usedPct : 100;
+  const defaultHours = account.provider === "codex" ? 3 : 5;
+  const resetsAt = snapshot?.session?.resetsAt;
+  const remainingHours = resetsAt && resetsAt > Date.now()
+    ? Math.max(0.5, Math.round(((resetsAt - Date.now()) / HOUR) * 2) / 2)
+    : defaultHours;
+
+  const planLabel = account.plan || state.providers[account.provider]?.plan || account.provider;
+  $("usage-dialog-account").textContent = `${account.name} · ${account.email ? `${account.email} · ` : ""}${planLabel}`;
+  $("usage-session-left").value = Math.round(left);
+  $("usage-session-slider").value = Math.round(left);
+  $("usage-duration").value = remainingHours;
+  $("usage-weekly-used").value = snapshot?.weekly?.usedPct !== undefined ? Math.round(snapshot.weekly.usedPct) : "";
+  $("usage-dialog")?.showModal();
+}
+
+$("usage-session-slider")?.addEventListener("input", (e) => {
+  $("usage-session-left").value = e.target.value;
+});
+$("usage-session-left")?.addEventListener("input", (e) => {
+  $("usage-session-slider").value = e.target.value;
+});
+$("usage-dialog-close")?.addEventListener("click", () => $("usage-dialog")?.close());
+$("usage-cancel")?.addEventListener("click", () => $("usage-dialog")?.close());
+$("usage-form")?.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (!activeUsageAccountId) return;
+  const sessionLeftPct = Number($("usage-session-left").value);
+  const sessionDurationHours = Number($("usage-duration").value) || 3;
+  const weeklyVal = $("usage-weekly-used").value.trim();
+  const payload = {
+    sessionLeftPct,
+    sessionDurationHours,
+  };
+  if (weeklyVal !== "") payload.weeklyUsedPct = Number(weeklyVal);
+  try {
+    await api("POST", `/api/accounts/${activeUsageAccountId}/reading`, payload);
+    $("usage-dialog")?.close();
+    await load();
+    showToast("Usage updated.", null);
+  } catch (err) {
+    showToast(`Could not update usage: ${err.message}`, null);
+  }
+});
+
+$("codex-form")?.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const name = $("codex-name").value.trim();
+  const email = $("codex-email").value.trim() || null;
+  const sessionDurationHours = Number($("codex-session-dur").value) || 3;
+  const sessionLeftPct = Number($("codex-session-left").value);
+  const statusEl = $("codex-status");
+  statusEl.hidden = false;
+  statusEl.textContent = "Adding account...";
+  statusEl.classList.remove("connect-error", "connect-ok");
+  try {
+    await api("POST", "/api/accounts", {
+      provider: "codex",
+      name: name || undefined,
+      email,
+      sessionDurationHours,
+      sessionLeftPct,
+    });
+    statusEl.textContent = "Account added!";
+    statusEl.classList.add("connect-ok");
+    $("codex-name").value = "";
+    $("codex-email").value = "";
+    await load();
+    setTimeout(() => toggleConnect(false), 800);
+  } catch (err) {
+    statusEl.textContent = `Could not add account: ${err.message}`;
+    statusEl.classList.add("connect-error");
+  }
+});
+
+$("custom-form")?.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const name = $("custom-name").value.trim();
+  const email = $("custom-email").value.trim() || null;
+  const sessionDurationHours = Number($("custom-session-dur").value) || 5;
+  const sessionLeftPct = Number($("custom-session-left").value);
+  const statusEl = $("custom-status");
+  statusEl.hidden = false;
+  statusEl.textContent = "Adding account...";
+  statusEl.classList.remove("connect-error", "connect-ok");
+  try {
+    await api("POST", "/api/accounts", {
+      provider: "other",
+      name: name || undefined,
+      email,
+      sessionDurationHours,
+      sessionLeftPct,
+    });
+    statusEl.textContent = "Account added!";
+    statusEl.classList.add("connect-ok");
+    $("custom-name").value = "";
+    $("custom-email").value = "";
+    await load();
+    setTimeout(() => toggleConnect(false), 800);
+  } catch (err) {
+    statusEl.textContent = `Could not add account: ${err.message}`;
+    statusEl.classList.add("connect-error");
+  }
 });
 
 $("toast-undo").addEventListener("click", async () => {

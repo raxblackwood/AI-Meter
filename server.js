@@ -9,7 +9,7 @@ import { createServer } from "node:http";
 import { dirname, extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHub } from "./src/hub.js";
-import { PROVIDERS, readAccounts, readReadings, readSeen, updateAccount } from "./src/store.js";
+import { createAccount, PROVIDERS, readAccounts, readReadings, readSeen, updateAccount } from "./src/store.js";
 import { packZip } from "./src/zip.js";
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
@@ -129,11 +129,39 @@ async function handleApi(req, res, url, hub, meter) {
     hub.startSignIn(null);
     return sendJson(res, 202, { started: true });
   }
+  if (req.method === "POST" && url.pathname === "/api/accounts") {
+    const body = await readBody(req);
+    const provider = typeof body.provider === "string" && body.provider.trim() ? body.provider.trim() : "other";
+    const name = typeof body.name === "string" && body.name.trim() ? body.name.trim().slice(0, MAX_NAME_LENGTH) : null;
+    const email = typeof body.email === "string" && body.email.trim() ? body.email.trim() : null;
+    const plan = typeof body.plan === "string" && body.plan.trim() ? body.plan.trim() : null;
+    const account = createAccount({ provider, name, email, plan });
+    hub.status[account.id] = { state: "ok", error: null, checkedAt: Date.now() };
+
+    const sessionLeft = body.sessionLeftPct !== undefined ? Number(body.sessionLeftPct) : (body.sessionUsedPct !== undefined ? 100 - Number(body.sessionUsedPct) : null);
+    if (sessionLeft !== null || body.weeklyUsedPct !== undefined) {
+      const nowMs = Date.now();
+      const durationHours = Number(body.sessionDurationHours) || (provider === "codex" ? 3 : 5);
+      const usedPct = sessionLeft !== null ? Math.max(0, Math.min(100, 100 - sessionLeft)) : 0;
+      const resetsAt = nowMs + durationHours * 3600_000;
+      const session = { usedPct, resetsAt };
+      const weekly = body.weeklyUsedPct !== undefined
+        ? { usedPct: Math.max(0, Math.min(100, Number(body.weeklyUsedPct))), resetsAt: nowMs + 7 * 86400_000 }
+        : null;
+      hub.recordAccountReading(account.id, { at: nowMs, session, weekly });
+    }
+
+    return sendJson(res, 201, publicAccount(account));
+  }
+  if (req.method === "POST" && (url.pathname === "/api/connector/custom" || url.pathname === "/api/connector/reading")) {
+    const account = hub.receiveCustomReading(await readBody(req));
+    return sendJson(res, 200, { accountId: account?.id ?? null });
+  }
   if (req.method === "POST" && url.pathname === CONNECTOR_PATH) {
     const account = hub.receiveClaude(await readBody(req));
     return sendJson(res, 200, { accountId: account?.id ?? null });
   }
-  const match = url.pathname.match(/^\/api\/accounts\/([\w-]+)(\/restore|\/sign-in)?$/);
+  const match = url.pathname.match(/^\/api\/accounts\/([\w-]+)(\/restore|\/sign-in|\/reading)?$/);
   if (!match) throw new HttpError(404, "Not found");
   const [, id, action] = match;
   const account = findAccount(id);
@@ -144,6 +172,30 @@ async function handleApi(req, res, url, hub, meter) {
   }
   if (req.method === "POST" && action === "/restore") {
     return sendJson(res, 200, publicAccount(updateAccount(id, { removedAt: null })));
+  }
+  if (req.method === "POST" && action === "/reading") {
+    const body = await readBody(req);
+    const nowMs = Date.now();
+    let session = null;
+    if (body.session) {
+      session = body.session;
+    } else if (body.sessionLeftPct !== undefined || body.sessionUsedPct !== undefined) {
+      const left = body.sessionLeftPct !== undefined ? Number(body.sessionLeftPct) : 100 - Number(body.sessionUsedPct);
+      const usedPct = Math.max(0, Math.min(100, 100 - left));
+      const durationHours = Number(body.sessionDurationHours) || (account.provider === "codex" ? 3 : 5);
+      const resetsAt = body.resetsAt ? Number(body.resetsAt) : nowMs + durationHours * 3600_000;
+      session = { usedPct, resetsAt };
+    }
+    let weekly = null;
+    if (body.weekly) {
+      weekly = body.weekly;
+    } else if (body.weeklyUsedPct !== undefined) {
+      const usedPct = Math.max(0, Math.min(100, Number(body.weeklyUsedPct)));
+      const resetsAt = body.weeklyResetsAt ? Number(body.weeklyResetsAt) : nowMs + 7 * 86400_000;
+      weekly = { usedPct, resetsAt };
+    }
+    hub.recordAccountReading(id, { at: nowMs, session, weekly });
+    return sendJson(res, 200, { success: true, accountId: id });
   }
   if (req.method === "PATCH" && !action) {
     const body = await readBody(req);
