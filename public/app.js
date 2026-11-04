@@ -133,13 +133,13 @@ function renderStatus(now) {
 }
 
 function renderConnect(now) {
-  $("extension-dir").textContent = state.connector.extensionDir;
+  if ($("extension-dir")) $("extension-dir").textContent = state.connector.extensionDir;
   // Once the extension is published, the store is the main way in and the folder steps are a fallback.
   const storeUrl = state.connector.storeUrl;
-  $("store-install").hidden = !storeUrl;
-  if (storeUrl) $("store-link").href = storeUrl;
-  $("manual-summary").textContent = storeUrl ? "Or install from folder" : "Install from folder";
-  if (!storeUrl && !$("manual-install").dataset.initialized) {
+  if ($("store-install")) $("store-install").hidden = !storeUrl;
+  if (storeUrl && $("store-link")) $("store-link").href = storeUrl;
+  if ($("manual-summary")) $("manual-summary").textContent = storeUrl ? "Or install from folder" : "Install from folder";
+  if (!storeUrl && $("manual-install") && !$("manual-install").dataset.initialized) {
     $("manual-install").open = true;
     $("manual-install").dataset.initialized = "1";
   }
@@ -149,36 +149,46 @@ function renderConnect(now) {
   // Accounts read through the extension, known from earlier reports even before the next one arrives.
   const viaBrowser = claude.filter((a) => !a.signedInHere && state.seen[a.id]);
   const connected = Boolean(reported) || viaBrowser.length > 0;
-  $("connect-status").textContent = !connected ? "Waiting for the extension. This updates on its own once it is loaded."
-    : error ? `The extension is installed but could not read claude.ai: ${error}`
-    : `Connected${viaBrowser.length ? `: ${viaBrowser.map((a) => a.email ?? a.name).join(", ")}` : ""}.`;
-  $("connect-status").classList.toggle("connect-ok", connected && !error);
+  if ($("connect-status")) {
+    $("connect-status").textContent = !connected ? "Waiting for the extension. This updates on its own once it is loaded."
+      : error ? `The extension is installed but could not read claude.ai: ${error}`
+      : `Connected${viaBrowser.length ? `: ${viaBrowser.map((a) => a.email ?? a.name).join(", ")}` : ""}.`;
+    $("connect-status").classList.toggle("connect-ok", connected && !error);
+  }
 
   // Signing in inside the app works only in the desktop app, not in a plain browser tab.
   const signIn = state.signIn;
-  $("method-app").hidden = !signIn.available;
-  $("sign-in-claude").disabled = signIn.pending;
-  $("sign-in-claude").textContent = signIn.pending ? "Waiting for sign-in..." : "Sign in to Claude";
-  $("sign-in-status").hidden = !signIn.pending && !signIn.error;
-  $("sign-in-status").textContent = signIn.pending
-    ? "Sign in in the window that opened. The account appears here as soon as you are done."
-    : signIn.error ? `Sign-in did not finish: ${signIn.error}` : "";
-  $("sign-in-status").classList.toggle("connect-error", Boolean(signIn.error));
+  if ($("method-app")) $("method-app").hidden = !signIn.available;
+  if ($("sign-in-claude")) {
+    $("sign-in-claude").disabled = signIn.pending;
+    $("sign-in-claude").textContent = signIn.pending ? "Waiting for sign-in..." : "Sign in to Claude";
+  }
+  if ($("sign-in-status")) {
+    $("sign-in-status").hidden = !signIn.pending && !signIn.error;
+    $("sign-in-status").textContent = signIn.pending
+      ? "Sign in in the window that opened. The account appears here as soon as you are done."
+      : signIn.error ? `Sign-in did not finish: ${signIn.error}` : "";
+    $("sign-in-status").classList.toggle("connect-error", Boolean(signIn.error));
+  }
 
   const ag = state.antigravity;
   const agAccounts = state.accounts.filter((a) => a.provider === "antigravity");
   const current = agAccounts.find((a) => now - (state.seen[a.id] ?? 0) <= CURRENT_WITHIN_MS);
-  $("antigravity-status").textContent = ag.state === "ok" && current
-    ? `Antigravity is open and signed in as ${current.email}. Tracked accounts: ${agAccounts.length}.`
-    : ag.state === "not-running" ? "Antigravity is not open right now."
-    : "Checking Antigravity...";
-  $("antigravity-status").classList.toggle("connect-ok", ag.state === "ok" && Boolean(current));
+  if ($("antigravity-status")) {
+    $("antigravity-status").textContent = ag.state === "ok" && current
+      ? `Antigravity is open and signed in as ${current.email}. Tracked accounts: ${agAccounts.length}.`
+      : ag.state === "not-running" ? "Antigravity is not open right now."
+      : "Checking Antigravity...";
+    $("antigravity-status").classList.toggle("connect-ok", ag.state === "ok" && Boolean(current));
+  }
 
   const cx = state.codex;
-  if (cx?.available) {
-    $("codex-status").hidden = false;
-    $("codex-status").textContent = `Codex detected locally as ${cx.email} (${cx.plan}). Tracked automatically!`;
-    $("codex-status").classList.add("connect-ok");
+  if ($("codex-status")) {
+    if (cx?.available) {
+      $("codex-status").hidden = false;
+      $("codex-status").textContent = `Codex detected locally as ${cx.email} (${cx.plan}). Tracked automatically!`;
+      $("codex-status").classList.add("connect-ok");
+    }
   }
 }
 
@@ -524,8 +534,16 @@ async function load() {
     loadError = err.message;
   }
   // Do not redraw under the user while they type a new name or use a menu.
-  if (state && !renamingId && !openMenuId) render();
-  else renderStatus(Date.now());
+  if (state && !renamingId && !openMenuId) {
+    try {
+      render();
+    } catch (err) {
+      loadError = err.message;
+      renderStatus(Date.now());
+    }
+  } else {
+    renderStatus(Date.now());
+  }
   clearTimeout(refreshTimer);
   const waiting = !$("connect").hidden || state?.signIn?.pending;
   refreshTimer = setTimeout(load, loadError ? 5_000 : waiting ? CONNECT_REFRESH_MS : REFRESH_MS);
