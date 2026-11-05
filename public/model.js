@@ -97,16 +97,14 @@ export function calibrate(snapshots) {
  */
 export function subscriptionInfo(account, now, spanStart = null, spanEnd = null) {
   if (!account) return null;
-  const subType = account.subType || (account.provider === "claude" || account.provider === "antigravity" || account.provider === "codex" ? "monthly" : null);
+  const subType = account.subType;
   if (!subType || subType === "none") return null;
-
-  const createdDate = new Date(account.createdAt || now);
-  const renewsDay = account.renewsDay ? Number(account.renewsDay) : createdDate.getDate();
 
   const markers = [];
 
   if (subType === "fixed") {
-    const endsAt = account.endsAt ? Number(account.endsAt) : (account.createdAt ? account.createdAt + 30 * DAY : now + 30 * DAY);
+    if (!account.endsAt) return null;
+    const endsAt = Number(account.endsAt);
     const daysLeft = Math.ceil((endsAt - now) / DAY);
     const dateStr = new Date(endsAt).toLocaleDateString([], { day: "numeric", month: "short" });
     const summary = daysLeft > 0 ? `Ends ${dateStr} (${daysLeft}d left)` : `Ended ${dateStr}`;
@@ -126,6 +124,9 @@ export function subscriptionInfo(account, now, spanStart = null, spanEnd = null)
   }
 
   // Monthly or Yearly recurring
+  if (!account.renewsDay) return null;
+  const renewsDay = Number(account.renewsDay);
+  if (renewsDay < 1 || renewsDay > 31) return null;
   if (spanStart && spanEnd) {
     const sDate = new Date(spanStart);
     const eDate = new Date(spanEnd);

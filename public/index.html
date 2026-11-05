@@ -252,15 +252,15 @@
       <div class="form-row">
         <label for="usage-sub-type">Subscription Plan Type</label>
         <select id="usage-sub-type" class="select-field">
+          <option value="none">None / Not set</option>
           <option value="monthly">Monthly plan (renews month-to-month)</option>
           <option value="yearly">Yearly plan (month-to-month cycles)</option>
           <option value="fixed">1-Month / fixed plan (ends on date)</option>
-          <option value="none">None / Pay-as-you-go</option>
         </select>
       </div>
-      <div class="form-row" id="usage-renews-day-row">
-        <label for="usage-renews-day">Monthly Billing / Renewal Day (e.g. 6 for 6th to 6th)</label>
-        <input type="number" id="usage-renews-day" min="1" max="31" placeholder="e.g. 6">
+      <div class="form-row" id="usage-renews-day-row" hidden>
+        <label for="usage-renews-day">Monthly Billing / Renewal Day (e.g. 15 for 15th to 15th)</label>
+        <input type="number" id="usage-renews-day" min="1" max="31" placeholder="e.g. 15">
       </div>
       <div class="form-row" id="usage-ends-at-row" hidden>
         <label for="usage-ends-at">Plan Ending / Expiry Date</label>

@@ -789,9 +789,9 @@ function openUsageDialog(id) {
   $("usage-duration").value = remainingHours;
   $("usage-weekly-used").value = snapshot?.weekly?.usedPct !== undefined ? Math.round(snapshot.weekly.usedPct) : "";
 
-  const subType = account.subType || "monthly";
+  const subType = account.subType || "none";
   if ($("usage-sub-type")) $("usage-sub-type").value = subType;
-  if ($("usage-renews-day")) $("usage-renews-day").value = account.renewsDay || new Date(account.createdAt || Date.now()).getDate();
+  if ($("usage-renews-day")) $("usage-renews-day").value = account.renewsDay || "";
   if ($("usage-ends-at")) {
     $("usage-ends-at").value = account.endsAt ? new Date(account.endsAt).toISOString().split("T")[0] : "";
   }
@@ -823,7 +823,7 @@ $("usage-form")?.addEventListener("submit", async (e) => {
   const sessionLeftPct = Number($("usage-session-left").value);
   const sessionDurationHours = Number($("usage-duration").value) || 3;
   const weeklyVal = $("usage-weekly-used").value.trim();
-  const subType = $("usage-sub-type")?.value || "monthly";
+  const subType = $("usage-sub-type")?.value || "none";
   const payload = {
     sessionLeftPct,
     sessionDurationHours,
@@ -831,10 +831,14 @@ $("usage-form")?.addEventListener("submit", async (e) => {
   };
   if (weeklyVal !== "") payload.weeklyUsedPct = Number(weeklyVal);
   if (subType === "monthly" || subType === "yearly") {
-    payload.renewsDay = Number($("usage-renews-day")?.value) || 1;
+    const renewVal = $("usage-renews-day")?.value.trim();
+    payload.renewsDay = renewVal ? Number(renewVal) : null;
   } else if (subType === "fixed") {
     const dateVal = $("usage-ends-at")?.value;
     payload.endsAt = dateVal ? new Date(`${dateVal}T00:00:00`).getTime() : null;
+  } else {
+    payload.renewsDay = null;
+    payload.endsAt = null;
   }
   try {
     await api("POST", `/api/accounts/${activeUsageAccountId}/reading`, payload);

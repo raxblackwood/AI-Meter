@@ -96,6 +96,10 @@ Product name: **AI Meter** (renamed 2026-10-29; the vault project and repository
   Replaced 1440px desktop max-width cap with 100% full-screen width, eliminating side margins on widescreen displays.
   Expanded sticky account column width from 280px to 340px and enabled strict overflow clipping to eliminate text bleeding into the timeline.
   Enhanced sticky elevation with opaque surface background and depth shadow so horizontally scrolled timeline bars cleanly slide underneath. 47 tests passing.
+- [x] Explicit Subscription Renewal Dates Only (ADR-026, 2026-11-05).
+  Eliminated heuristic date guessing that assumed unconfigured accounts renewed on the 6th or account creation day.
+  Ensured subscription renewals and timeline markers only display when explicitly configured by the user via the update dialog.
+  Cleared temporary hardcoded renewal day values from local storage. 47 tests passing.
 - [ ] Rax: register a Chrome Web Store developer account (USD 5), host `PRIVACY.md` publicly (repo is private), add screenshots, submit after the first live reading works.
 - [x] Extension now reports its failures (`{ email?, signedOut, error }`) to `POST /api/connector/claude`; the app shows the reason in the header and the Add account panel (`connector.error`, cleared by the next good reading) (2026-10-28).
 - [x] First live Claude reading through the extension (2026-10-28, 20:48): Rax's account loaded in **Edge** became "Claude 1" with 5-hour 42% used and weekly 39% used, matching `five_hour` / `seven_day` with `utilization` and `resets_at`, and `/api/account` `email_address`. The app showed it in Next up and Active session. One earlier report was rejected (cause not captured); rejection diagnostics (`connector.error`, `connector.rejectedShape`, field names only) stay in place for the next time. (verify `/api/organizations/{org}/usage` shape and that extension fetches carry the claude.ai cookies).
